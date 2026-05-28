@@ -1,17 +1,17 @@
 ---
-name: superpowers-pipeline
+name: /arch:superpowers-pipeline
 description: "Entry point for the design-to-implementation pipeline: architecture → plan → subagent execution. Load this one skill to start the full flow."
-version: 1.0.0
+version: 1.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [pipeline, architecture, planning, implementation, workflow, orchestration]
-    related_skills: [architecture-documentation, writing-plans, subagent-driven-development]
+    related_skills: [/arch:architecture-documentation, /arch:writing-plans, /arch:subagent-driven-development]
 ---
 
-# Superpowers Pipeline
+# /arch:superpowers-pipeline
 
 ## Overview
 
@@ -19,14 +19,14 @@ A three-phase design-to-implementation pipeline modelled after [obra/superpowers
 
 ```
 Phase 1                    Phase 2                    Phase 3
-architecture-              writing-                   subagent-driven-
+/arch:architecture-        /arch:writing-             /arch:subagent-driven-
 documentation         →    plans                 →    development
 ─────────────────         ─────────                  ──────────────────
 ADR + C4 + AGENTS.md      Task-by-task plan           delegate_task × N
                                                       + 2-stage review
 ```
 
-**You are at Phase 1. Load `architecture-documentation` now.**
+**You are at Phase 1. Load `/arch:architecture-documentation` now.**
 
 ## Core Principle
 
@@ -41,15 +41,15 @@ No guessing. No hoping the agent figures it out. The contract is in the text.
 
 | Phase | Produces | Path | Consumed By |
 |---|---|---|---|
-| Architecture | ADR decisions | `docs/architecture/adr/` | writing-plans |
-| Architecture | C4 diagrams | `docs/architecture/c4/` | writing-plans |
-| Architecture | AGENTS.md | Project root or `docs/architecture/` | writing-plans, subagent-driven-development |
-| Planning | Implementation plan | `.hermes/plans/<name>.md` | subagent-driven-development |
+| Architecture | ADR decisions | `docs/architecture/adr/` | /arch:writing-plans |
+| Architecture | C4 diagrams | `docs/architecture/c4/` | /arch:writing-plans |
+| Architecture | AGENTS.md | Project root or `docs/architecture/` | /arch:writing-plans, /arch:subagent-driven-development |
+| Planning | Implementation plan | `.hermes/plans/<name>.md` | /arch:subagent-driven-development |
 | Execution | Working code | Project source | (terminal — pipeline ends here) |
 
 ## Phase 1: Architecture Documentation
 
-**Skill to load: `architecture-documentation`**
+**Skill to load: `/arch:architecture-documentation`**
 
 Produces:
 - **ADR** — one per non-obvious architectural decision (context, options, decision, consequences)
@@ -63,11 +63,11 @@ Visual workflow for ADR discussion:
 
 **Gate to proceed:** All three artifacts exist and user has approved the architectural direction.
 
-**Terminal state:** Load `writing-plans`. Do NOT load `subagent-driven-development` directly.
+**Terminal state:** Load `/arch:writing-plans`. Do NOT load `/arch:subagent-driven-development` directly.
 
 ## Phase 2: Implementation Planning
 
-**Skill to load: `writing-plans`**
+**Skill to load: `/arch:writing-plans`**
 
 **Prerequisite:** ADR + C4 + AGENTS.md exist. If missing, STOP and go back to Phase 1.
 
@@ -76,11 +76,11 @@ Produces:
 
 **Gate to proceed:** Plan saved and user has approved the scope.
 
-**Terminal state:** Load `subagent-driven-development`. Provide the plan file path.
+**Terminal state:** Load `/arch:subagent-driven-development`. Provide the plan file path.
 
 ## Phase 3: Subagent-Driven Execution
 
-**Skill to load: `subagent-driven-development`**
+**Skill to load: `/arch:subagent-driven-development`**
 
 **Prerequisite:** Implementation plan exists in `.hermes/plans/`. If missing, STOP and go back to Phase 2.
 
@@ -93,14 +93,14 @@ Produces:
 
 ## Full Flow (Checklist)
 
-- [ ] Phase 1: `architecture-documentation` loaded
+- [ ] Phase 1: `/arch:architecture-documentation` loaded
 - [ ] ADR-001+ written, approved
 - [ ] C4 Level 1-2 diagrams written
 - [ ] AGENTS.md written
-- [ ] → Load `writing-plans`
+- [ ] → Load `/arch:writing-plans`
 - [ ] Phase 2: Plan written, tasks are bite-sized
 - [ ] Plan saved to `.hermes/plans/`
-- [ ] → Load `subagent-driven-development`
+- [ ] → Load `/arch:subagent-driven-development`
 - [ ] Phase 3: Tasks dispatched, reviews passed
 - [ ] Full test suite green
 - [ ] Pipeline complete
