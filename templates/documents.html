@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Документы{% endblock %}
+{% block content %}
+<h2>Проиндексированные документы ({{ docs|length }})</h2>
+{% if docs %}
+<ul>
+{% for doc in docs %}
+    <li>
+        <strong>{{ doc.title or doc.source.split('/')[-1] }}</strong>
+        <span class="status">{{ doc.mime_type }} · {{ doc.indexed_at }}</span>
+    </li>
+{% endfor %}
+</ul>
+{% else %}
+<p>Документов пока нет. <a href="/upload">Загрузить первый</a></p>
+{% endif %}
+{% endblock %}

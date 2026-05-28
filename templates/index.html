@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Поиск{% endblock %}
+{% block content %}
+<h2>Поиск по документам</h2>
+<form hx-post="/search" hx-target="#results" hx-swap="innerHTML" hx-indicator="#spinner">
+    <input type="text" name="query" placeholder="Задай вопрос..." style="width: 70%; margin-right: 8px;">
+    <button type="submit">Найти</button>
+    <span id="spinner" class="htmx-indicator"> ⏳</span>
+</form>
+<div id="results" style="margin-top: 20px;"></div>
+{% endblock %}

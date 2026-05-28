@@ -1,0 +1,14 @@
+<div class="answer">{{ answer }}</div>
+{% if sources %}
+<div class="sources">
+    <strong>Источники:</strong>
+    {% for s in sources %}
+    <div class="source-item">
+        [{{ s.index }}]
+        {% if s.title %}{{ s.title }}{% endif %}
+        {% if s.section %} — {{ s.section }}{% endif %}
+        {% if s.page %} (стр. {{ s.page }}){% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

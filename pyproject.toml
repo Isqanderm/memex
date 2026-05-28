@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "memex"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
+    "pgvector>=0.3",
+    "pydantic-settings>=2.0",
+    "openai>=1.50",
+    "anthropic>=0.40",
+    "sentence-transformers>=3.0",
+    "langdetect>=1.0",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
+    "httpx>=0.27",
+    "aiofiles>=24.0",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "testcontainers[postgres]>=4.8",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "unit: unit tests (no DB)",
+    "integration: integration tests (requires Docker)",
+    "e2e: end-to-end tests (requires API keys)",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

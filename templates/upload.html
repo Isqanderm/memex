@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Загрузить{% endblock %}
+{% block content %}
+<h2>Загрузить документ</h2>
+<form hx-post="/api/documents"
+      hx-encoding="multipart/form-data"
+      hx-target="#upload-status"
+      hx-swap="innerHTML">
+    <input type="file" name="file" accept=".pdf,.docx,.txt,.md" required>
+    <button type="submit" style="margin-left: 8px;">Загрузить</button>
+</form>
+<div id="upload-status" style="margin-top: 16px;"></div>
+<script>
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.detail.requestConfig && evt.detail.requestConfig.path === '/api/documents') {
+        var data = JSON.parse(evt.detail.xhr.responseText);
+        var status = document.getElementById('upload-status');
+        var p = document.createElement('p');
+        if (data.status === 'pending') {
+            p.textContent = 'Файл загружен. Job ID: ' + data.job_id;
+        } else if (data.status === 'already_indexed') {
+            p.textContent = 'Этот документ уже проиндексирован.';
+        } else {
+            p.textContent = JSON.stringify(data);
+        }
+        status.replaceChildren(p);
+    }
+});
+</script>
+{% endblock %}
