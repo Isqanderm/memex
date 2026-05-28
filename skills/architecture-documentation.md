@@ -1,23 +1,23 @@
 ---
-name: architecture-documentation
+name: /arch:architecture-documentation
 description: "ADR, C4, AGENTS.md — architectural artifacts that humans write and LLMs consume. No DSL required."
-version: 1.0.0
+version: 1.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [architecture, adr, c4, design, documentation, planning]
-    related_skills: [writing-plans, design-md, excalidraw, golden-query-evaluation, subagent-driven-development]
+    related_skills: [/arch:writing-plans, design-md, excalidraw, golden-query-evaluation, /arch:subagent-driven-development]
 ---
 
-# Architecture Documentation
+# /arch:architecture-documentation
 
 Create architectural artifacts before writing code. The key insight: LLMs understand structured natural language — you don't need a DSL. Write for humans first; LLMs will follow.
 
 ## When to Use
 
-- Starting a new project (before `writing-plans`)
+- Starting a new project (before `/arch:writing-plans`)
 - Making a non-obvious architectural decision
 - Need to communicate design intent to LLM coding tools (Claude Code, Cursor, Copilot)
 - User asks to "think like an architect" or "create architectural artifacts"
@@ -134,7 +134,7 @@ Discuss → Excalidraw → ADR.md → Mermaid C4 → AGENTS.md → Golden Querie
 4. **Mermaid C4** — system context + container diagram in markdown
 5. **AGENTS.md** — architectural contract for LLM coding tools
 6. **Golden Queries** — acceptance criteria before any code
-7. **Implementation Plan** — task-by-task via `writing-plans`
+7. **Implementation Plan** — task-by-task via `/arch:writing-plans`
 8. **Subagent-Driven** — execute with two-stage review per task
 
 ## Pitfalls
@@ -155,11 +155,11 @@ This is a **terminal state** for the architecture phase. When ALL architectural 
 - [ ] C4 Level 1-2 diagrams in `docs/architecture/c4/`
 - [ ] AGENTS.md in project root or `docs/architecture/`
 
-**The ONLY skill you invoke after architecture-documentation is `writing-plans`.**
+**The ONLY skill you invoke after /arch:architecture-documentation is `/arch:writing-plans`.**
 
-Do NOT load `subagent-driven-development`, `golden-query-evaluation`, or any implementation skill directly. Architecture → Plan → Execute. In that order. No shortcuts.
+Do NOT load `/arch:subagent-driven-development`, `golden-query-evaluation`, or any implementation skill directly. Architecture → Plan → Execute. In that order. No shortcuts.
 
 These artifact paths are the CONTRACT between architecture and planning:
-- `docs/architecture/adr/` — ADR markdown files (consumed by `writing-plans`)
-- `docs/architecture/c4/` — C4 diagrams in Mermaid (consumed by `writing-plans`)
-- `AGENTS.md` or `docs/architecture/AGENTS.md` — architectural contract (consumed by `writing-plans` and `subagent-driven-development`)
+- `docs/architecture/adr/` — ADR markdown files (consumed by `/arch:writing-plans`)
+- `docs/architecture/c4/` — C4 diagrams in Mermaid (consumed by `/arch:writing-plans`)
+- `AGENTS.md` or `docs/architecture/AGENTS.md` — architectural contract (consumed by `/arch:writing-plans` and `/arch:subagent-driven-development`)
