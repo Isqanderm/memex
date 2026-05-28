@@ -1,17 +1,17 @@
 ---
-name: subagent-driven-development
+name: /arch:subagent-driven-development
 description: "Execute plans via delegate_task subagents (2-stage review)."
-version: 1.1.0
+version: 1.1.1
 author: Hermes Agent (adapted from obra/superpowers)
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [delegation, subagent, implementation, workflow, parallel]
-    related_skills: [writing-plans, requesting-code-review, test-driven-development]
+    related_skills: [/arch:writing-plans, requesting-code-review, test-driven-development]
 ---
 
-# Subagent-Driven Development
+# /arch:subagent-driven-development
 
 ## Overview
 
@@ -23,14 +23,14 @@ Execute implementation plans by dispatching fresh subagents per task with system
 
 Before dispatching any subagent, VERIFY that an implementation plan exists:
 
-- [ ] Plan file in `.hermes/plans/` (created by `writing-plans` skill)
+- [ ] Plan file in `.hermes/plans/` (created by `/arch:writing-plans` skill)
 
-If no plan exists, STOP immediately. Load `writing-plans` skill first. Do NOT implement without a plan. Do NOT make tasks up as you go.
+If no plan exists, STOP immediately. Load `/arch:writing-plans` skill first. Do NOT implement without a plan. Do NOT make tasks up as you go.
 
 ## When to Use
 
 Use this skill when:
-- You have an implementation plan (from writing-plans skill or user requirements)
+- You have an implementation plan (from /arch:writing-plans skill or user requirements)
 - Tasks are mostly independent
 - Quality and spec compliance are important
 - You want automated review between tasks
@@ -125,4 +125,4 @@ git add -A && git commit -m "feat: complete [feature name] implementation"
 
 When ALL tasks are complete, all reviews pass, and the full test suite is green:
 
-The implementation pipeline is complete. The project is ready for the next development cycle — which starts again with `architecture-documentation`.
+The implementation pipeline is complete. The project is ready for the next development cycle — which starts again with `/arch:architecture-documentation`.
