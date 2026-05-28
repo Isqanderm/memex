@@ -1,17 +1,17 @@
 ---
-name: writing-plans
+name: /arch:writing-plans
 description: "Write implementation plans: bite-sized tasks, paths, code."
-version: 1.2.0
+version: 1.2.1
 author: Hermes Agent (adapted from obra/superpowers)
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [planning, design, implementation, workflow, documentation]
-    related_skills: [subagent-driven-development, test-driven-development, requesting-code-review]
+    related_skills: [/arch:subagent-driven-development, test-driven-development, requesting-code-review]
 ---
 
-# Writing Implementation Plans
+# /arch:writing-plans
 
 ## Overview
 
@@ -29,14 +29,14 @@ Before writing any plan, VERIFY that architectural artifacts exist:
 - [ ] C4 diagrams in `docs/architecture/c4/`
 - [ ] AGENTS.md in project root or `docs/architecture/`
 
-If artifacts are missing, STOP immediately. Load `architecture-documentation` skill first. Do NOT write a plan without architecture. Do NOT guess the architecture from code.
+If artifacts are missing, STOP immediately. Load `/arch:architecture-documentation` skill first. Do NOT write a plan without architecture. Do NOT guess the architecture from code.
 
 ## When to Use
 
 **Always use before:**
 - Implementing multi-step features
 - Breaking down complex requirements
-- Delegating to subagents via subagent-driven-development
+- Delegating to subagents via /arch:subagent-driven-development
 
 **Don't skip when:**
 - Feature seems simple (assumptions cause bugs)
@@ -81,7 +81,7 @@ Every plan MUST start with:
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> **For Hermes:** Use /arch:subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** [One sentence describing what this builds]
 
@@ -298,9 +298,9 @@ For **new projects** (not features within an existing codebase), prefer GitHub i
 
 When the plan is complete and saved to `.hermes/plans/`:
 
-**The ONLY skill you invoke after writing-plans is `subagent-driven-development`.**
+**The ONLY skill you invoke after /arch:writing-plans is `/arch:subagent-driven-development`.**
 
-Do NOT start implementing directly. Do NOT dispatch subagents manually. Load `subagent-driven-development` — it will read the plan and execute task-by-task with two-stage review.
+Do NOT start implementing directly. Do NOT dispatch subagents manually. Load `/arch:subagent-driven-development` — it will read the plan and execute task-by-task with two-stage review.
 
 The plan path (`.hermes/plans/<plan-file>.md`) is the CONTRACT between planning and execution. Provide the exact path when loading the next skill.
 
