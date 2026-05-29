@@ -13,6 +13,8 @@
   --text-accent:      #c4b5fd;
 }
 
+* { box-sizing: border-box; }
+
 html, body { height: 100%; margin: 0; padding: 0; }
 body {
   background: var(--bg);
@@ -257,3 +259,9 @@ body {
 }
 .empty-state-icon { font-size: 36px; opacity: .3; }
 .empty-state a    { color: var(--accent); }
+
+/* ── Focus states (accessibility) ──────────────── */
+.btn-primary:focus-visible,
+.chat-send-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-input-field:focus { border: none; }
+.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
