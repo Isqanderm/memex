@@ -1,14 +1,20 @@
-<div class="answer">{{ answer }}</div>
-{% if sources %}
-<div class="sources">
-    <strong>Источники:</strong>
-    {% for s in sources %}
-    <div class="source-item">
-        [{{ s.index }}]
-        {% if s.title %}{{ s.title }}{% endif %}
-        {% if s.section %} — {{ s.section }}{% endif %}
-        {% if s.page %} (стр. {{ s.page }}){% endif %}
+<div class="exchange">
+  <div class="user-bubble-wrap">
+    <div class="user-bubble">{{ query }}</div>
+  </div>
+  <div class="bot-bubble-wrap">
+    <div class="bot-avatar">⬡</div>
+    <div class="bot-bubble">
+      {{ answer }}
+      {% if sources %}
+      <div class="source-tags">
+        {% for s in sources %}
+        <span class="source-tag">
+          📄 {% if s.title %}{{ s.title }}{% elif s.section %}{{ s.section }}{% else %}источник {{ s.index }}{% endif %}{% if s.page %} · стр. {{ s.page }}{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
-    {% endfor %}
+  </div>
 </div>
-{% endif %}

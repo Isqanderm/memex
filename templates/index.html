@@ -1,11 +1,78 @@
 {% extends "base.html" %}
 {% block title %}Поиск{% endblock %}
 {% block content %}
-<h2>Поиск по документам</h2>
-<form hx-post="/search" hx-target="#results" hx-swap="innerHTML" hx-indicator="#spinner">
-    <input type="text" name="query" placeholder="Задай вопрос..." style="width: 70%; margin-right: 8px;">
-    <button type="submit">Найти</button>
-    <span id="spinner" class="htmx-indicator"> ⏳</span>
-</form>
-<div id="results" style="margin-top: 20px;"></div>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Поиск по документам</div>
+    <div class="page-subtitle">Задай вопрос — получи ответ со ссылками на источники</div>
+  </div>
+</div>
+
+<div id="chat-history" class="chat-history">
+  {% if not doc_count %}
+  <div class="empty-state">
+    <div class="empty-state-icon">🔍</div>
+    <div>База знаний пуста. <a href="/upload">Загрузи документы</a> чтобы начать поиск.</div>
+  </div>
+  {% endif %}
+</div>
+
+<div id="typing-indicator" class="bot-bubble-wrap">
+  <div class="bot-avatar">⬡</div>
+  <div class="bot-bubble">
+    <div class="typing-dots"><span></span><span></span><span></span></div>
+  </div>
+</div>
+
+<div class="chat-input-area">
+  <form id="search-form"
+        hx-post="/search"
+        hx-target="#chat-history"
+        hx-swap="beforeend">
+    <div class="chat-input-row">
+      <input class="chat-input-field"
+             type="text"
+             name="query"
+             placeholder="Задай вопрос..."
+             autocomplete="off"
+             required>
+      <button class="chat-send-btn" type="submit">↑</button>
+    </div>
+  </form>
+  <div class="chat-input-hint">Enter для отправки</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const form      = document.getElementById('search-form');
+  const history   = document.getElementById('chat-history');
+  const indicator = document.getElementById('typing-indicator');
+
+  document.body.addEventListener('htmx:beforeRequest', function (e) {
+    if (e.detail.elt === form) {
+      history.querySelectorAll('.exchange:not(.faded)').forEach(function (el) {
+        el.classList.add('faded');
+      });
+      indicator.classList.add('visible');
+    }
+  });
+
+  document.body.addEventListener('htmx:afterRequest', function (e) {
+    if (e.detail.elt === form) {
+      indicator.classList.remove('visible');
+      form.querySelector('[name="query"]').value = '';
+    }
+  });
+
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (e.detail.target === history) {
+      history.scrollTop = history.scrollHeight;
+    }
+  });
+})();
+</script>
 {% endblock %}
