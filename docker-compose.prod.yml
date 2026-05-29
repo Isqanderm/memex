@@ -1,0 +1,46 @@
+# Production compose — uses pre-built image from GHCR.
+# Usage on server:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required .env on server (copy from .env.example and fill):
+#   POSTGRES_PASSWORD=<strong-password>
+#   DATABASE_URL=postgresql+asyncpg://memex:<password>@postgres:5432/memex
+#   OPENAI_API_KEY=sk-...   (or ANTHROPIC_API_KEY)
+#   LLM_PROVIDER=openai
+#   EMBEDDING_MODEL=text-embedding-3-small
+#   SECRET_KEY=<random-string>
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: memex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: memex
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memex"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/isqanderm/memex:latest
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://memex:${POSTGRES_PASSWORD}@postgres:5432/memex
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
