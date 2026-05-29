@@ -30,3 +30,4 @@
 | [0010](0010-orm-sqlalchemy-alembic.md) | ORM и Миграции — SQLAlchemy 2.0 async + Alembic | accepted |
 | [0011](0011-configuration-pydantic-settings.md) | Конфигурация — Pydantic Settings | accepted |
 | [0012](0012-testing-testcontainers.md) | Тестирование — testcontainers + pytest | accepted |
+| [0013](0013-markitdown-adapter-pptx-xlsx-epub.md) | MarkItDownAdapter — Microsoft MarkItDown для PPTX, XLSX, EPUB | accepted |
