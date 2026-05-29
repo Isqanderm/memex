@@ -2,8 +2,8 @@
 {% block title %}Документы{% endblock %}
 
 {% macro doc_icon(mime) %}
-  {%- if mime == 'application/pdf' %}📄
-  {%- elif mime in ('text/plain', 'text/markdown') %}📝
+  {%- if (mime or '') == 'application/pdf' %}📄
+  {%- elif (mime or '') in ('text/plain', 'text/markdown') %}📝
   {%- elif 'wordprocessingml' in (mime or '') %}📃
   {%- elif 'presentationml' in (mime or '') %}📊
   {%- elif 'spreadsheetml' in (mime or '') %}📊
