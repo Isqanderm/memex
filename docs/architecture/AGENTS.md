@@ -7,9 +7,11 @@
 
 ## Что такое Memex
 
-Personal RAG система. Один пользователь. Индексирует личные документы разных форматов (PDF, DOCX, MD, TXT), отвечает на вопросы на естественном языке (RU + EN).
+Personal RAG система. Один пользователь. Индексирует личные документы разных форматов, отвечает на вопросы на естественном языке (RU + EN).
 
-**Интерфейсы:** REST API (FastAPI) + MCP Server (для Claude Code и других AI-клиентов).
+**Поддерживаемые форматы:** PDF, DOCX, MD, TXT, PPTX, XLSX/XLS, EPUB.
+
+**Интерфейсы:** REST API (FastAPI) + Web UI (Jinja2 + HTMX) + MCP Server (для Claude Code и других AI-клиентов).
 
 ---
 
@@ -92,11 +94,22 @@ ui/        НЕ вызывает api/ напрямую
 
 Перед изменением любого из этих компонентов — прочитай соответствующий ADR в `docs/architecture/adr/`.
 
-### Adapter Layer (ADR-0001)
+### Adapter Layer (ADR-0001, ADR-0013)
 - Каждый адаптер — класс с `can_handle(source) → bool` и `parse(source) → ParsedDocument`
 - `ParsedDocument` содержит `sections: list[Section]` — структуру документа, не сырой текст
 - `AdapterRegistry` итерирует адаптеры по порядку регистрации, первый подходящий wins
 - **Не возвращай** из адаптера сырую строку — только `ParsedDocument`
+
+**Порядок регистрации в registry строго фиксирован** (менять только через ADR):
+```
+1. PdfAdapter        ← pypdf, сохраняет page_number — критично для citations
+2. DocxAdapter       ← python-docx, сохраняет heading levels
+3. MarkdownAdapter   ← regex по заголовкам
+4. TextAdapter       ← plain text, один Section
+5. MarkItDownAdapter ← Microsoft MarkItDown, fallback: PPTX, XLSX, XLS, EPUB
+```
+
+**Правило MarkItDownAdapter (ADR-0013):** используется только как fallback для форматов без нативного адаптера. PdfAdapter и DocxAdapter на нативных библиотеках сохраняют структуру лучше. `page_number` у PPTX/XLSX/EPUB всегда `None` — эти форматы не имеют стабильной пагинации.
 
 ### Chunking — Small-to-Big (ADR-0002)
 - Два уровня: **L2** (~512 токенов, `chunk_role='parent'`) и **L1** (~128 токенов, `chunk_role='leaf'`)
@@ -231,7 +244,7 @@ chunks → tsv IS NOT NULL
 
 ## Ссылки на архитектурные артефакты
 
-- ADR: `docs/architecture/adr/` — все принятые решения с контекстом и альтернативами
+- ADR: `docs/architecture/adr/` — 13 принятых решений с контекстом и альтернативами
 - C4 Level 1: `docs/architecture/c4/01-system-context.md`
 - C4 Level 2: `docs/architecture/c4/02-containers.md`
 - Анализ паттернов chunking: `docs/superpowers/specs/2026-05-28-rag-chunking-patterns.md`
