@@ -1,3 +1,4 @@
+from typing import AsyncIterator
 from src.llm.protocol import LLMResponse
 
 
@@ -22,3 +23,13 @@ class ClaudeProvider:
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
+
+    async def complete_stream(self, prompt: str) -> AsyncIterator[str]:
+        async with self._client.messages.stream(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text

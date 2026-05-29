@@ -1,3 +1,4 @@
+from typing import AsyncIterator
 from src.llm.protocol import LLMResponse
 
 
@@ -24,3 +25,16 @@ class OpenAIProvider:
             input_tokens=usage.prompt_tokens if usage else 0,
             output_tokens=usage.completion_tokens if usage else 0,
         )
+
+    async def complete_stream(self, prompt: str) -> AsyncIterator[str]:
+        stream = await self._client.chat.completions.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta

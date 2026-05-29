@@ -13,7 +13,7 @@ class L2Chunk:
     section_heading: str | None
     page_number: int | None
     doc_title: str | None
-    doc_source: str | None
+    doc_source: str | None = None
 
 
 async def expand_to_l2(

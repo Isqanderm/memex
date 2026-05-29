@@ -26,19 +26,16 @@
 </div>
 
 <div class="chat-input-area">
-  <form id="search-form"
-        hx-post="/search"
-        hx-target="#chat-history"
-        hx-swap="beforeend"
-        hx-disabled-elt="[type='submit']">
+  <form id="search-form">
     <div class="chat-input-row">
       <input class="chat-input-field"
+             id="query-input"
              type="text"
              name="query"
              placeholder="Задай вопрос..."
              autocomplete="off"
              required>
-      <button class="chat-send-btn" type="submit">↑</button>
+      <button class="chat-send-btn" id="send-btn" type="submit">↑</button>
     </div>
   </form>
   <div class="chat-input-hint">Enter для отправки</div>
@@ -49,20 +46,22 @@
 {% block scripts %}
 <script>
 (function () {
-  const form      = document.getElementById('search-form');
-  const chatHistory = document.getElementById('chat-history');
-  const indicator = document.getElementById('typing-indicator');
+  var form      = document.getElementById('search-form');
+  var chatHistory = document.getElementById('chat-history');
+  var indicator = document.getElementById('typing-indicator');
+  var queryInput = document.getElementById('query-input');
+  var sendBtn   = document.getElementById('send-btn');
 
-  document.body.addEventListener('htmx:beforeRequest', function (e) {
-    if (e.detail.elt !== form) return;
-
-    var queryText = form.querySelector('[name="query"]').value;
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var queryText = queryInput.value.trim();
+    if (!queryText) return;
 
     // Fade all previous unfaded bubbles
     chatHistory.querySelectorAll('.user-bubble-wrap:not(.faded), .bot-bubble-wrap:not(.faded)')
       .forEach(function (el) { el.classList.add('faded'); });
 
-    // Inject user bubble immediately (optimistic UI)
+    // Inject user bubble immediately
     var userWrap = document.createElement('div');
     userWrap.className = 'user-bubble-wrap';
     var userBubble = document.createElement('div');
@@ -72,22 +71,116 @@
     chatHistory.appendChild(userWrap);
     chatHistory.scrollTop = chatHistory.scrollHeight;
 
-    // Clear input right away
-    form.querySelector('[name="query"]').value = '';
+    // Clear input and disable button
+    queryInput.value = '';
+    sendBtn.disabled = true;
 
-    // Show typing indicator
+    // Show typing indicator (retrieval phase)
     indicator.classList.add('visible');
-  });
 
-  document.body.addEventListener('htmx:afterRequest', function (e) {
-    if (e.detail.elt !== form) return;
-    indicator.classList.remove('visible');
-  });
+    // Stream
+    var formData = new FormData();
+    formData.append('query', queryText);
 
-  document.body.addEventListener('htmx:afterSwap', function (e) {
-    if (e.detail.target === chatHistory) {
-      chatHistory.scrollTop = chatHistory.scrollHeight;
+    // Bot bubble — created on first token
+    var botWrap = null;
+    var botBubble = null;
+    var answerSpan = null;
+
+    function createBotBubble() {
+      indicator.classList.remove('visible');
+      botWrap = document.createElement('div');
+      botWrap.className = 'bot-bubble-wrap';
+      var avatar = document.createElement('div');
+      avatar.className = 'bot-avatar';
+      avatar.textContent = '⬡';
+      botBubble = document.createElement('div');
+      botBubble.className = 'bot-bubble';
+      answerSpan = document.createElement('span');
+      botBubble.appendChild(answerSpan);
+      botWrap.appendChild(avatar);
+      botWrap.appendChild(botBubble);
+      chatHistory.appendChild(botWrap);
     }
+
+    function showError() {
+      if (!botWrap) createBotBubble();
+      botBubble.replaceChildren();
+      var errSpan = document.createElement('span');
+      errSpan.style.color = '#f87171';
+      errSpan.textContent = '⚠ Не удалось получить ответ. Попробуй ещё раз.';
+      botBubble.appendChild(errSpan);
+    }
+
+    fetch('/search/stream', { method: 'POST', body: formData })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+
+        function processBuffer() {
+          // Parse SSE events from buffer
+          var parts = buffer.split('\n\n');
+          buffer = parts.pop(); // keep incomplete last chunk
+
+          parts.forEach(function (block) {
+            var eventType = null;
+            var dataLine = null;
+            block.split('\n').forEach(function (line) {
+              if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+              else if (line.startsWith('data: ')) dataLine = line.slice(6);
+            });
+            if (!eventType || dataLine === null) return;
+
+            if (eventType === 'token') {
+              if (!botWrap) createBotBubble();
+              answerSpan.textContent += JSON.parse(dataLine);
+              chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            } else if (eventType === 'sources') {
+              var sources = JSON.parse(dataLine);
+              var seen = {};
+              var tagsDiv = document.createElement('div');
+              tagsDiv.className = 'source-tags';
+              sources.forEach(function (s) {
+                if (seen[s.doc_id]) return;
+                seen[s.doc_id] = true;
+                var a = document.createElement('a');
+                a.className = 'source-tag';
+                a.href = '/api/documents/' + s.doc_id + '/file';
+                a.target = '_blank';
+                a.rel = 'noopener';
+                var name = s.filename || (s.title && s.title !== '(anonymous)' && s.title) || ('источник ' + s.index);
+                a.textContent = '📄 ' + name + (s.page ? ' · стр. ' + s.page : '');
+                tagsDiv.appendChild(a);
+              });
+              if (botBubble && tagsDiv.childElementCount) botBubble.appendChild(tagsDiv);
+
+            } else if (eventType === 'error') {
+              showError();
+            }
+          });
+        }
+
+        function read() {
+          return reader.read().then(function (result) {
+            if (result.done) return;
+            buffer += decoder.decode(result.value, { stream: true });
+            processBuffer();
+            return read();
+          });
+        }
+
+        return read();
+      })
+      .catch(function () { showError(); })
+      .finally(function () {
+        indicator.classList.remove('visible');
+        sendBtn.disabled = false;
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+      });
   });
 })();
 </script>

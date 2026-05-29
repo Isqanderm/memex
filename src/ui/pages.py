@@ -1,5 +1,6 @@
+import json
 from fastapi import APIRouter, Request, Form, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -113,3 +114,35 @@ async def search(
             f'</div>',
             status_code=200,
         )
+
+
+@router.post("/search/stream")
+async def search_stream(
+    query: str = Form(...),
+    session: AsyncSession = Depends(get_db_session),
+):
+    from src.dependencies import get_retrieval_service, get_embedding_client
+    service = get_retrieval_service()
+    client = get_embedding_client()
+
+    async def embed(text: str) -> list[float]:
+        return (await client.embed_batch([text]))[0]
+
+    async def generate():
+        try:
+            async for event in service.query_stream(session, query, embed_fn=embed):
+                if event["type"] == "token":
+                    yield f"event: token\ndata: {json.dumps(event['data'])}\n\n"
+                elif event["type"] == "sources":
+                    yield f"event: sources\ndata: {json.dumps(event['data'])}\n\n"
+                elif event["type"] == "done":
+                    yield "event: done\ndata: {}\n\n"
+        except Exception as e:
+            safe = str(e).replace('"', '\\"')
+            yield f'event: error\ndata: {{"message": "{safe}"}}\n\n'
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

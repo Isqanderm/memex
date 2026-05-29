@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, AsyncIterator
 
 
 @dataclass
@@ -11,3 +11,4 @@ class LLMResponse:
 
 class LLMProvider(Protocol):
     async def complete(self, prompt: str) -> LLMResponse: ...
+    def complete_stream(self, prompt: str) -> AsyncIterator[str]: ...

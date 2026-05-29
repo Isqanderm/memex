@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
+from typing import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.retrieval.semantic import SemanticSearch
 from src.retrieval.bm25 import BM25Search
@@ -63,3 +64,23 @@ class RetrievalService:
             input_tokens=llm_response.input_tokens,
             output_tokens=llm_response.output_tokens,
         )
+
+    async def query_stream(
+        self,
+        session: AsyncSession,
+        query: str,
+        embed_fn,
+    ) -> AsyncIterator[dict]:
+        query_vector = await embed_fn(query)
+        semantic_hits = await self.semantic_search.search(session, query_vector)
+        bm25_hits = await self.bm25_search.search(session, query)
+        merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
+        l2_chunks = await expand_to_l2(session, merged)
+        reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
+        ctx = self.context_builder.build(query, reranked)
+
+        async for token in self.llm_provider.complete_stream(ctx.prompt):
+            yield {"type": "token", "data": token}
+
+        yield {"type": "sources", "data": ctx.sources}
+        yield {"type": "done"}
