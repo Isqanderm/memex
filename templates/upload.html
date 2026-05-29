@@ -143,8 +143,12 @@
     var pctMap  = { pending: 15, processing: 55, done: 100, error: 100 };
     var timer = setInterval(function () {
       fetch('/api/jobs/' + encodeURIComponent(jobId))
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (!r.ok) { clearInterval(timer); return null; }
+          return r.json();
+        })
         .then(function (job) {
+          if (!job) return;
           var step = stepMap[job.status] !== undefined ? stepMap[job.status] : 1;
           var pct  = pctMap[job.status]  !== undefined ? pctMap[job.status]  : 55;
           setStatus(id, job.status, job.error, pct, step);

@@ -104,11 +104,12 @@ async def search(
         )
     except Exception as e:
         safe_query = query.replace("<", "&lt;").replace(">", "&gt;")
+        safe_error = str(e).replace("<", "&lt;").replace(">", "&gt;")
         return HTMLResponse(
             f'<div class="exchange">'
             f'<div class="user-bubble-wrap"><div class="user-bubble">{safe_query}</div></div>'
             f'<div class="bot-bubble-wrap"><div class="bot-avatar">⬡</div>'
-            f'<div class="bot-bubble" style="color:#f87171">Ошибка: {e}</div></div>'
+            f'<div class="bot-bubble" style="color:#f87171">Ошибка: {safe_error}</div></div>'
             f'</div>',
-            status_code=500,
+            status_code=200,
         )
