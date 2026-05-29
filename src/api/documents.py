@@ -68,6 +68,53 @@ async def serve_document_file(
     return FileResponse(path=str(path), media_type=doc.mime_type, filename=display_name)
 
 
+@router.patch("/documents/{doc_id}")
+async def update_document(
+    doc_id: str,
+    body: dict,
+    session: AsyncSession = Depends(get_db_session),
+):
+    from sqlalchemy import select
+    from src.db.models import Document
+    try:
+        doc_uuid = uuid.UUID(doc_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document ID")
+    result = await session.execute(select(Document).where(Document.id == doc_uuid))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if "title" in body and body["title"] is not None:
+        doc.title = body["title"]
+    if "tags" in body:
+        doc.metadata_ = {**(doc.metadata_ or {}), "tags": body["tags"]}
+    await session.commit()
+    return {"id": str(doc.id), "title": doc.title, "metadata": doc.metadata_}
+
+
+@router.delete("/documents/{doc_id}", status_code=204)
+async def delete_document(
+    doc_id: str,
+    session: AsyncSession = Depends(get_db_session),
+):
+    from sqlalchemy import select
+    from src.db.models import Document
+    try:
+        doc_uuid = uuid.UUID(doc_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document ID")
+    result = await session.execute(select(Document).where(Document.id == doc_uuid))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    # Delete file from disk
+    path = Path(doc.source)
+    if path.exists():
+        path.unlink()
+    await session.delete(doc)
+    await session.commit()
+
+
 @router.get("/documents")
 async def list_documents(session: AsyncSession = Depends(get_db_session)):
     from sqlalchemy import select
@@ -79,10 +126,10 @@ async def list_documents(session: AsyncSession = Depends(get_db_session)):
     return [
         {
             "id": str(d.id),
-            "source": d.source,
             "title": d.title,
             "mime_type": d.mime_type,
             "indexed_at": d.indexed_at.isoformat() if d.indexed_at else None,
+            "tags": (d.metadata_ or {}).get("tags", []),
         }
         for d in docs
     ]
