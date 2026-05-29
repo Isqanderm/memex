@@ -4,19 +4,12 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_session_factory
+from src.db.session import get_db_session
 from src.db.repositories.document_repo import DocumentRepository
 from src.db.repositories.job_repo import JobRepository
 from src.config import get_settings
 
 router = APIRouter(tags=["documents"])
-
-
-async def get_db_session() -> AsyncSession:
-    factory = get_session_factory()
-    async with factory() as session:
-        async with session.begin():
-            yield session
 
 
 class UploadResponse(BaseModel):

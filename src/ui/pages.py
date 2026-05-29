@@ -4,16 +4,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from src.db.session import get_db_session
+
 router = APIRouter(tags=["ui"])
 templates = Jinja2Templates(directory="templates")
-
-
-async def get_db_session() -> AsyncSession:
-    from src.db.session import get_session_factory
-    factory = get_session_factory()
-    async with factory() as session:
-        async with session.begin():
-            yield session
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -26,12 +20,22 @@ async def documents_page(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
 ):
-    from src.db.models import Document
-    result = await session.execute(
+    from src.db.models import Document, IngestionJob
+    docs_result = await session.execute(
         select(Document).order_by(Document.indexed_at.desc())
     )
-    docs = result.scalars().all()
-    return templates.TemplateResponse(request, "documents.html", {"docs": docs})
+    docs = docs_result.scalars().all()
+
+    jobs_result = await session.execute(
+        select(IngestionJob)
+        .where(IngestionJob.status.in_(["pending", "processing", "error"]))
+        .order_by(IngestionJob.created_at.desc())
+    )
+    active_jobs = jobs_result.scalars().all()
+
+    return templates.TemplateResponse(
+        request, "documents.html", {"docs": docs, "active_jobs": active_jobs}
+    )
 
 
 @router.get("/upload", response_class=HTMLResponse)

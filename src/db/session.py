@@ -30,3 +30,22 @@ async def close_db():
     if _engine:
         await _engine.dispose()
         _engine = None
+
+
+async def get_db_session() -> AsyncSession:
+    """FastAPI dependency для получения сессии БД.
+
+    Явный try/finally вместо вложенных context manager'ов — избегает
+    IllegalStateChangeError когда cleanup сессии пересекается с
+    незавершённой операцией (например, при перехваченном исключении в хэндлере).
+    """
+    factory = get_session_factory()
+    session: AsyncSession = factory()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()

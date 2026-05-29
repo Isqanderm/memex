@@ -45,10 +45,10 @@ class RetrievalService:
     ) -> QueryResult:
         query_vector = await embed_fn(query)
 
-        semantic_hits, bm25_hits = await asyncio.gather(
-            self.semantic_search.search(session, query_vector),
-            self.bm25_search.search(session, query),
-        )
+        # Последовательно — AsyncSession не поддерживает конкурентные операции
+        # на одном объекте (SQLAlchemy isce error при asyncio.gather).
+        semantic_hits = await self.semantic_search.search(session, query_vector)
+        bm25_hits = await self.bm25_search.search(session, query)
 
         merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
         l2_chunks = await expand_to_l2(session, merged)

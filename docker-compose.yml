@@ -26,6 +26,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
+      - ./src:/app/src
       - ./data:/app/data
       - ./templates:/app/templates
       - ./static:/app/static
