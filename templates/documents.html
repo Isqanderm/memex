@@ -1,17 +1,55 @@
 {% extends "base.html" %}
 {% block title %}Документы{% endblock %}
+
+{% macro doc_icon(mime) %}
+  {%- if mime == 'application/pdf' %}📄
+  {%- elif mime in ('text/plain', 'text/markdown') %}📝
+  {%- elif 'wordprocessingml' in (mime or '') %}📃
+  {%- elif 'presentationml' in (mime or '') %}📊
+  {%- elif 'spreadsheetml' in (mime or '') %}📊
+  {%- else %}📁
+  {%- endif %}
+{% endmacro %}
+
 {% block content %}
-<h2>Проиндексированные документы ({{ docs|length }})</h2>
-{% if docs %}
-<ul>
-{% for doc in docs %}
-    <li>
-        <strong>{{ doc.title or doc.source.split('/')[-1] }}</strong>
-        <span class="status">{{ doc.mime_type }} · {{ doc.indexed_at }}</span>
-    </li>
-{% endfor %}
-</ul>
-{% else %}
-<p>Документов пока нет. <a href="/upload">Загрузить первый</a></p>
-{% endif %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Документы</div>
+    <div class="page-subtitle">Проиндексированные файлы базы знаний</div>
+  </div>
+  <a href="/upload" class="btn-primary">⬆ Загрузить</a>
+</div>
+
+<div class="page-body">
+
+  {% include "_jobs_fragment.html" %}
+
+  <div>
+    <div class="section-label">Проиндексировано · {{ docs | length }}</div>
+    {% if docs %}
+    <div class="doc-list">
+      {% for doc in docs %}
+      <div class="doc-row">
+        <div class="doc-icon">{{ doc_icon(doc.mime_type) }}</div>
+        <div class="doc-info">
+          <div class="doc-name">{{ doc.title or doc.source.split('/')[-1] }}</div>
+          <div class="doc-meta">
+            {{ doc.mime_type }}
+            {% if doc.indexed_at %} · {{ doc.indexed_at.strftime('%d %b %Y') }}{% endif %}
+          </div>
+        </div>
+        <span class="badge badge-done">✓ готов</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state-icon">📄</div>
+      <div>Документов пока нет. <a href="/upload">Загрузить первый</a></div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
 {% endblock %}
