@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Form, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from src.db.session import get_db_session
 
@@ -10,9 +10,18 @@ router = APIRouter(tags=["ui"])
 templates = Jinja2Templates(directory="templates")
 
 
+async def _doc_count(session: AsyncSession) -> int:
+    from src.db.models import Document
+    result = await session.execute(select(func.count()).select_from(Document))
+    return result.scalar() or 0
+
+
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+async def index(request: Request, session: AsyncSession = Depends(get_db_session)):
+    count = await _doc_count(session)
+    return templates.TemplateResponse(
+        request, "index.html", {"active_page": "search", "doc_count": count}
+    )
 
 
 @router.get("/documents", response_class=HTMLResponse)
@@ -34,13 +43,43 @@ async def documents_page(
     active_jobs = jobs_result.scalars().all()
 
     return templates.TemplateResponse(
-        request, "documents.html", {"docs": docs, "active_jobs": active_jobs}
+        request,
+        "documents.html",
+        {
+            "docs": docs,
+            "active_jobs": active_jobs,
+            "active_page": "documents",
+            "doc_count": len(docs),
+        },
     )
 
 
 @router.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request):
-    return templates.TemplateResponse(request, "upload.html")
+async def upload_page(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    count = await _doc_count(session)
+    return templates.TemplateResponse(
+        request, "upload.html", {"active_page": "upload", "doc_count": count}
+    )
+
+
+@router.get("/jobs-fragment", response_class=HTMLResponse)
+async def jobs_fragment(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+):
+    from src.db.models import IngestionJob
+    jobs_result = await session.execute(
+        select(IngestionJob)
+        .where(IngestionJob.status.in_(["pending", "processing", "error"]))
+        .order_by(IngestionJob.created_at.desc())
+    )
+    active_jobs = jobs_result.scalars().all()
+    return templates.TemplateResponse(
+        request, "_jobs_fragment.html", {"active_jobs": active_jobs}
+    )
 
 
 @router.post("/search", response_class=HTMLResponse)
@@ -61,7 +100,15 @@ async def search(
         return templates.TemplateResponse(
             request,
             "_results.html",
-            {"answer": result.answer, "sources": result.sources},
+            {"query": query, "answer": result.answer, "sources": result.sources},
         )
     except Exception as e:
-        return HTMLResponse(f'<p class="error">Ошибка: {e}</p>', status_code=500)
+        safe_query = query.replace("<", "&lt;").replace(">", "&gt;")
+        return HTMLResponse(
+            f'<div class="exchange">'
+            f'<div class="user-bubble-wrap"><div class="user-bubble">{safe_query}</div></div>'
+            f'<div class="bot-bubble-wrap"><div class="bot-avatar">⬡</div>'
+            f'<div class="bot-bubble" style="color:#f87171">Ошибка: {e}</div></div>'
+            f'</div>',
+            status_code=500,
+        )
