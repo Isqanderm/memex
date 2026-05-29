@@ -5,6 +5,7 @@ from src.adapters.text import TextAdapter
 from src.adapters.markdown import MarkdownAdapter
 from src.adapters.pdf import PdfAdapter
 from src.adapters.docx import DocxAdapter
+from src.adapters.markitdown_adapter import MarkItDownAdapter
 from src.ingestion.chunker import SmallToBigChunker
 from src.ingestion.language import LanguageDetector
 from src.ingestion.embedding import EmbeddingStage, OpenAIEmbeddingClient
@@ -25,6 +26,7 @@ def get_adapter_registry() -> AdapterRegistry:
     registry.register(DocxAdapter())
     registry.register(MarkdownAdapter())
     registry.register(TextAdapter())
+    registry.register(MarkItDownAdapter())
     return registry
 
 
