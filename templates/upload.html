@@ -1,30 +1,179 @@
 {% extends "base.html" %}
 {% block title %}Загрузить{% endblock %}
 {% block content %}
-<h2>Загрузить документ</h2>
-<form hx-post="/api/documents"
-      hx-encoding="multipart/form-data"
-      hx-target="#upload-status"
-      hx-swap="innerHTML">
-    <input type="file" name="file" accept=".pdf,.docx,.txt,.md" required>
-    <button type="submit" style="margin-left: 8px;">Загрузить</button>
-</form>
-<div id="upload-status" style="margin-top: 16px;"></div>
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Загрузить документ</div>
+    <div class="page-subtitle">Перетащи файлы или выбери вручную — поддержка множественной загрузки</div>
+  </div>
+</div>
+
+<div class="page-body">
+
+  <div class="dropzone" id="dropzone">
+    <div style="font-size:32px;opacity:.6;">📂</div>
+    <div class="dropzone-title">Перетащи файлы сюда</div>
+    <div class="dropzone-sub">или <strong>нажми для выбора</strong></div>
+    <div class="fmt-badges">
+      {% for fmt in ['PDF','DOCX','TXT','MD','PPTX','XLSX','EPUB'] %}
+        <span class="fmt-badge">{{ fmt }}</span>
+      {% endfor %}
+    </div>
+    <input id="file-input" type="file"
+           accept=".pdf,.docx,.txt,.md,.pptx,.xlsx,.epub"
+           multiple style="display:none">
+  </div>
+
+  <div id="file-queue" style="display:none;">
+    <div class="section-label" id="queue-label">Очередь</div>
+    <div id="file-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-document.body.addEventListener('htmx:afterRequest', function(evt) {
-    if (evt.detail.requestConfig && evt.detail.requestConfig.path === '/api/documents') {
-        var data = JSON.parse(evt.detail.xhr.responseText);
-        var status = document.getElementById('upload-status');
-        var p = document.createElement('p');
-        if (data.status === 'pending') {
-            p.textContent = 'Файл загружен. Job ID: ' + data.job_id;
-        } else if (data.status === 'already_indexed') {
-            p.textContent = 'Этот документ уже проиндексирован.';
+(function () {
+  const dropzone  = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  const fileQueue = document.getElementById('file-queue');
+  const fileList  = document.getElementById('file-list');
+  const queueLabel = document.getElementById('queue-label');
+
+  const STEPS = ['загружен', 'разбор', 'чанкинг', 'эмбеддинг'];
+
+  /* ── Drag & drop ── */
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('dragover'); });
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', function () {
+    handleFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  function handleFiles(files) {
+    if (!files.length) return;
+    fileQueue.style.display = 'block';
+    Array.from(files).forEach(uploadFile);
+    updateQueueLabel();
+  }
+
+  /* ── Helpers ── */
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+  }
+
+  function getIcon(name) {
+    var ext = name.split('.').pop().toLowerCase();
+    return { pdf:'📄', docx:'📃', doc:'📃', txt:'📝', md:'📝', pptx:'📊', xlsx:'📊', epub:'📖' }[ext] || '📁';
+  }
+
+  function stepsHTML(activeStep) {
+    return STEPS.map(function (s, i) {
+      var cls   = i < activeStep ? 'done' : i === activeStep ? 'active' : 'pending';
+      var label = i === activeStep ? s + ' ⟳' : s;
+      var sep   = i < STEPS.length - 1 ? '<span class="step-sep">›</span>' : '';
+      return '<span class="step-label ' + cls + '">' + label + '</span>' + sep;
+    }).join('');
+  }
+
+  // Returns a badge DOM element — user-provided error text set via setAttribute (XSS-safe).
+  function makeBadgeEl(status, error) {
+    var span = document.createElement('span');
+    span.className = 'badge ';
+    if (status === 'done')            { span.className += 'badge-done';   span.textContent = '✓ готов'; }
+    else if (status === 'error')      { span.className += 'badge-error';  span.textContent = '✕ ошибка'; if (error) span.setAttribute('title', error); }
+    else if (status === 'already_indexed') { span.className += 'badge-dup'; span.textContent = '⚠ дубликат'; }
+    else if (status === 'processing') { span.className += 'badge-queued'; span.textContent = '⟳ индексация'; }
+    else                              { span.className += 'badge-queued'; span.textContent = '⏳ очередь'; }
+    return span;
+  }
+
+  /* ── Upload one file ── */
+  function uploadFile(file) {
+    var id = 'f' + Date.now() + Math.random().toString(36).slice(2);
+    var item = document.createElement('div');
+    item.className = 'file-item';
+    item.id = id;
+    // Skeleton with static strings only — user data set via textContent (XSS-safe).
+    item.innerHTML = [
+      '<div class="file-icon-upload" id="' + id + '-icon"></div>',
+      '<div class="file-body">',
+        '<div class="file-name" id="' + id + '-name"></div>',
+        '<div class="file-size" id="' + id + '-size"></div>',
+        '<div class="progress-steps" id="' + id + '-steps">' + stepsHTML(0) + '</div>',
+        '<div class="progress-bar-bg"><div class="progress-bar-fill active" id="' + id + '-bar" style="width:5%"></div></div>',
+      '</div>',
+      '<div class="file-badge" id="' + id + '-badge"></div>',
+    ].join('');
+    document.getElementById(id + '-icon').textContent = getIcon(file.name);
+    document.getElementById(id + '-name').textContent = file.name;
+    document.getElementById(id + '-size').textContent = formatSize(file.size);
+    document.getElementById(id + '-badge').appendChild(makeBadgeEl('queued'));
+    fileList.appendChild(item);
+
+    var form = new FormData();
+    form.append('file', file);
+    fetch('/api/documents', { method: 'POST', body: form })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.status === 'already_indexed') {
+          setStatus(id, 'already_indexed', null, 100, STEPS.length);
+        } else if (data.status === 'pending' || data.status === 'already_queued') {
+          pollJob(id, data.job_id);
         } else {
-            p.textContent = JSON.stringify(data);
+          setStatus(id, 'error', data.detail || 'upload failed', 100, STEPS.length);
         }
-        status.replaceChildren(p);
-    }
-});
+      })
+      .catch(function () { setStatus(id, 'error', 'network error', 100, STEPS.length); });
+  }
+
+  /* ── Poll job status ── */
+  function pollJob(id, jobId) {
+    var stepMap = { pending: 0, processing: 1, done: STEPS.length, error: STEPS.length };
+    var pctMap  = { pending: 15, processing: 55, done: 100, error: 100 };
+    var timer = setInterval(function () {
+      fetch('/api/jobs/' + encodeURIComponent(jobId))
+        .then(function (r) { return r.json(); })
+        .then(function (job) {
+          var step = stepMap[job.status] !== undefined ? stepMap[job.status] : 1;
+          var pct  = pctMap[job.status]  !== undefined ? pctMap[job.status]  : 55;
+          setStatus(id, job.status, job.error, pct, step);
+          if (job.status === 'done' || job.status === 'error') {
+            clearInterval(timer);
+            updateQueueLabel();
+          }
+        })
+        .catch(function () { clearInterval(timer); });
+    }, 2000);
+  }
+
+  /* ── Update one file row ── */
+  function setStatus(id, status, error, pct, step) {
+    var bar   = document.getElementById(id + '-bar');
+    var badge = document.getElementById(id + '-badge');
+    var steps = document.getElementById(id + '-steps');
+    if (!bar) return;
+    bar.style.width = pct + '%';
+    if (status === 'done')  bar.className = 'progress-bar-fill complete';
+    if (status === 'error') bar.className = 'progress-bar-fill errored';
+    if (badge) { badge.replaceChildren(makeBadgeEl(status, error)); }
+    if (steps) steps.innerHTML = stepsHTML(step); // stepsHTML uses only STEPS[] constants — safe
+  }
+
+  function updateQueueLabel() {
+    var n = fileList.querySelectorAll('.file-item').length;
+    queueLabel.textContent = 'Очередь · ' + n + (n === 1 ? ' файл' : ' файла');
+  }
+})();
 </script>
 {% endblock %}
