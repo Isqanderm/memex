@@ -10,7 +10,7 @@
   <div class="processing-banner">
     <div class="spinner"></div>
     <div>
-      <div class="processing-name">{{ job.source.split('/')[-1] }}</div>
+      <div class="processing-name">{{ (job.source or '').split('/')[-1] or job.source }}</div>
       <div class="processing-status">
         {% if job.status == 'error' %}
           <span style="color:#f87171">Ошибка: {{ job.error or 'неизвестно' }}</span>

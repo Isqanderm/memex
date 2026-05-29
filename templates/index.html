@@ -29,7 +29,8 @@
   <form id="search-form"
         hx-post="/search"
         hx-target="#chat-history"
-        hx-swap="beforeend">
+        hx-swap="beforeend"
+        hx-disabled-elt="[type='submit']">
     <div class="chat-input-row">
       <input class="chat-input-field"
              type="text"
