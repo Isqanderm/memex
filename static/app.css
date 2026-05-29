@@ -129,7 +129,10 @@ body {
   background: var(--accent-muted-bg); color: #a78bfa;
   font-size: 10px; padding: 2px 8px; border-radius: 10px;
   border: 1px solid var(--accent-muted-bdr);
+  text-decoration: none; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
 }
+.source-tag:hover { background: var(--accent); color: white; border-color: var(--accent); }
 
 /* Typing indicator */
 #typing-indicator { padding: 0 24px 12px; display: none; }

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 from src.retrieval.expand import L2Chunk
 
 
@@ -32,6 +33,8 @@ class ContextBuilder:
             sources_text += "---\n"
             sources_text += chunk.content + "\n"
 
+            raw_name = Path(chunk.doc_source).name if chunk.doc_source else None
+            filename = raw_name.split('-', 5)[-1] if raw_name else None
             sources_meta.append({
                 "index": i,
                 "doc_id": str(chunk.doc_id),
@@ -39,6 +42,7 @@ class ContextBuilder:
                 "section": chunk.section_heading,
                 "page": chunk.page_number,
                 "preview": chunk.content[:200],
+                "filename": filename,
             })
 
         prompt = f"{self.SYSTEM}\n\nИсточники:\n{sources_text}\nВопрос: {query}"

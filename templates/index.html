@@ -50,28 +50,43 @@
 <script>
 (function () {
   const form      = document.getElementById('search-form');
-  const history   = document.getElementById('chat-history');
+  const chatHistory = document.getElementById('chat-history');
   const indicator = document.getElementById('typing-indicator');
 
   document.body.addEventListener('htmx:beforeRequest', function (e) {
-    if (e.detail.elt === form) {
-      history.querySelectorAll('.exchange:not(.faded)').forEach(function (el) {
-        el.classList.add('faded');
-      });
-      indicator.classList.add('visible');
-    }
+    if (e.detail.elt !== form) return;
+
+    var queryText = form.querySelector('[name="query"]').value;
+
+    // Fade all previous unfaded bubbles
+    chatHistory.querySelectorAll('.user-bubble-wrap:not(.faded), .bot-bubble-wrap:not(.faded)')
+      .forEach(function (el) { el.classList.add('faded'); });
+
+    // Inject user bubble immediately (optimistic UI)
+    var userWrap = document.createElement('div');
+    userWrap.className = 'user-bubble-wrap';
+    var userBubble = document.createElement('div');
+    userBubble.className = 'user-bubble';
+    userBubble.textContent = queryText;
+    userWrap.appendChild(userBubble);
+    chatHistory.appendChild(userWrap);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+
+    // Clear input right away
+    form.querySelector('[name="query"]').value = '';
+
+    // Show typing indicator
+    indicator.classList.add('visible');
   });
 
   document.body.addEventListener('htmx:afterRequest', function (e) {
-    if (e.detail.elt === form) {
-      indicator.classList.remove('visible');
-      form.querySelector('[name="query"]').value = '';
-    }
+    if (e.detail.elt !== form) return;
+    indicator.classList.remove('visible');
   });
 
   document.body.addEventListener('htmx:afterSwap', function (e) {
-    if (e.detail.target === history) {
-      history.scrollTop = history.scrollHeight;
+    if (e.detail.target === chatHistory) {
+      chatHistory.scrollTop = chatHistory.scrollHeight;
     }
   });
 })();

@@ -1,20 +1,15 @@
-<div class="exchange">
-  <div class="user-bubble-wrap">
-    <div class="user-bubble">{{ query }}</div>
-  </div>
-  <div class="bot-bubble-wrap">
-    <div class="bot-avatar">⬡</div>
-    <div class="bot-bubble">
-      {{ answer }}
-      {% if sources %}
-      <div class="source-tags">
-        {% for s in sources %}
-        <span class="source-tag">
-          📄 {% if s.title %}{{ s.title }}{% elif s.section %}{{ s.section }}{% else %}источник {{ s.index }}{% endif %}{% if s.page %} · стр. {{ s.page }}{% endif %}
-        </span>
-        {% endfor %}
-      </div>
-      {% endif %}
+<div class="bot-bubble-wrap">
+  <div class="bot-avatar">⬡</div>
+  <div class="bot-bubble">
+    {{ answer }}
+    {% if sources %}
+    <div class="source-tags">
+      {% for s in sources %}
+      <a class="source-tag" href="/api/documents/{{ s.doc_id }}/file" target="_blank" rel="noopener">
+        📄 {% if s.filename %}{{ s.filename }}{% elif s.title and s.title != '(anonymous)' %}{{ s.title }}{% elif s.section %}{{ s.section }}{% else %}источник {{ s.index }}{% endif %}{% if s.page %} · стр. {{ s.page }}{% endif %}
+      </a>
+      {% endfor %}
     </div>
+    {% endif %}
   </div>
 </div>

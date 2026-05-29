@@ -1,7 +1,8 @@
 import hashlib
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_db_session
@@ -43,6 +44,28 @@ async def upload_document(
 
     job = await job_repo.create(source=str(dest), checksum=checksum)
     return UploadResponse(job_id=str(job.id), status="pending")
+
+
+@router.get("/documents/{doc_id}/file")
+async def serve_document_file(
+    doc_id: str,
+    session: AsyncSession = Depends(get_db_session),
+):
+    from sqlalchemy import select
+    from src.db.models import Document
+    try:
+        doc_uuid = uuid.UUID(doc_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document ID")
+    result = await session.execute(select(Document).where(Document.id == doc_uuid))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    path = Path(doc.source)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    display_name = path.name.split('-', 5)[-1] if '-' in path.name else path.name
+    return FileResponse(path=str(path), media_type=doc.mime_type, filename=display_name)
 
 
 @router.get("/documents")

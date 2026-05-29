@@ -13,6 +13,7 @@ class L2Chunk:
     section_heading: str | None
     page_number: int | None
     doc_title: str | None
+    doc_source: str | None
 
 
 async def expand_to_l2(
@@ -25,7 +26,7 @@ async def expand_to_l2(
 
     result = await session.execute(text("""
         SELECT c.id, c.content, c.doc_id, c.section_heading, c.page_number,
-               d.title AS doc_title
+               d.title AS doc_title, d.source AS doc_source
         FROM chunks c
         JOIN documents d ON d.id = c.doc_id
         WHERE c.id = ANY(:ids)
@@ -39,6 +40,7 @@ async def expand_to_l2(
             section_heading=row.section_heading,
             page_number=row.page_number,
             doc_title=row.doc_title,
+            doc_source=row.doc_source,
         )
         for row in result
     ]
