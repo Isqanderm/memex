@@ -18,7 +18,7 @@ async def get_db_session() -> AsyncSession:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @router.get("/documents", response_class=HTMLResponse)
@@ -31,14 +31,12 @@ async def documents_page(
         select(Document).order_by(Document.indexed_at.desc())
     )
     docs = result.scalars().all()
-    return templates.TemplateResponse(
-        "documents.html", {"request": request, "docs": docs}
-    )
+    return templates.TemplateResponse(request, "documents.html", {"docs": docs})
 
 
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request):
-    return templates.TemplateResponse("upload.html", {"request": request})
+    return templates.TemplateResponse(request, "upload.html")
 
 
 @router.post("/search", response_class=HTMLResponse)
@@ -56,10 +54,10 @@ async def search(
 
     try:
         result = await service.query(session, query, embed_fn=embed)
-        return templates.TemplateResponse("_results.html", {
-            "request": request,
-            "answer": result.answer,
-            "sources": result.sources,
-        })
+        return templates.TemplateResponse(
+            request,
+            "_results.html",
+            {"answer": result.answer, "sources": result.sources},
+        )
     except Exception as e:
         return HTMLResponse(f'<p class="error">Ошибка: {e}</p>', status_code=500)
