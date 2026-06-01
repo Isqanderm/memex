@@ -46,19 +46,11 @@ curl -X POST http://localhost:8000/api/query \
 
 ### MCP (Claude Code)
 
-Add to `.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "memex": {
-      "command": "python3",
-      "args": ["mcp_server.py"],
-      "cwd": "/path/to/memex"
-    }
-  }
-}
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-claude-code.sh)
 ```
+
+Starts Memex, installs the MCP bridge, and patches `.claude/settings.json` automatically. Restart Claude Code after. Manual setup: [`docs/claude-code.md`](docs/claude-code.md).
 
 Available tools: `remember`, `recall`, `index_file`, `check_indexing`, `list_memories`, `forget`.
 
