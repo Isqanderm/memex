@@ -8,7 +8,12 @@ from src.ingestion.worker import IngestionWorker
 from src.dependencies import get_ingestion_pipeline
 from src.config import get_settings
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s %(message)s",
+)
 logger = logging.getLogger(__name__)
+logging.getLogger("memex.profile").setLevel(logging.INFO)
 
 _worker_task = None
 _expiry_task = None
@@ -62,6 +67,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Memex", version="0.1.0", lifespan=lifespan)
+
+import time as _time
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as _Request
+
+class _TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: _Request, call_next):
+        t0 = _time.perf_counter()
+        response = await call_next(request)
+        ms = (_time.perf_counter() - t0) * 1000
+        logger.info("%.0fms  %s %s", ms, request.method, request.url.path)
+        return response
+
+app.add_middleware(_TimingMiddleware)
 
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")

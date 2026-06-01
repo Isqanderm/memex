@@ -10,6 +10,7 @@ from src.retrieval.reranker import Reranker
 from src.retrieval.context import ContextBuilder
 from src.llm.protocol import LLMProvider
 from src.retrieval.memory_search import MemorySearch, MemoryHit
+from src.profiling import StepTimer
 
 
 @dataclass
@@ -48,31 +49,33 @@ class RetrievalService:
         embed_fn,
         memory_search: "MemorySearch | None" = None,
     ) -> QueryResult:
-        query_vector = await embed_fn(query)
+        t = StepTimer("query")
 
-        # Последовательно — AsyncSession не поддерживает конкурентные операции
-        # на одном объекте (SQLAlchemy isce error при asyncio.gather).
-        semantic_hits = await self.semantic_search.search(session, query_vector)
-        bm25_hits = await self.bm25_search.search(session, query)
+        with t.step("embed"):
+            query_vector = await embed_fn(query)
 
-        merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
-        l2_chunks = await expand_to_l2(session, merged)
-        reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
+        with t.step("semantic"):
+            semantic_hits = await self.semantic_search.search(session, query_vector)
+        with t.step("bm25"):
+            bm25_hits = await self.bm25_search.search(session, query)
+        with t.step("expand"):
+            merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
+            l2_chunks = await expand_to_l2(session, merged)
+        with t.step("rerank"):
+            reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
 
-        ctx = self.context_builder.build(query, reranked)
-
-        # Prepend memory context if memory_search is configured
-        memory_prefix = ""
         effective_memory_search = memory_search or self.memory_search
+        mem_hits = []
         if effective_memory_search:
-            mem_hits = await effective_memory_search.search(session, query_vector)
-            if mem_hits:
-                lines = "\n".join(f"- {h.content} [memory]" for h in mem_hits[:5])
-                memory_prefix = f"Personal facts about the user:\n{lines}\n\n"
+            with t.step("memory"):
+                mem_hits = await effective_memory_search.search(session, query_vector)
 
-        final_prompt = memory_prefix + ctx.prompt
-        llm_response = await self.llm_provider.complete(final_prompt)
+        ctx = self.context_builder.build(query, reranked, memory_hits=mem_hits)
 
+        with t.step("llm"):
+            llm_response = await self.llm_provider.complete(ctx.prompt)
+
+        t.log()
         return QueryResult(
             answer=llm_response.answer,
             sources=ctx.sources,
@@ -113,26 +116,30 @@ class RetrievalService:
         embed_fn,
         memory_search: "MemorySearch | None" = None,
     ) -> AsyncIterator[dict]:
-        query_vector = await embed_fn(query)
-        semantic_hits = await self.semantic_search.search(session, query_vector)
-        bm25_hits = await self.bm25_search.search(session, query)
-        merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
-        l2_chunks = await expand_to_l2(session, merged)
-        reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
-        ctx = self.context_builder.build(query, reranked)
+        t = StepTimer("stream")
 
-        # Prepend memory context if memory_search is configured
-        memory_prefix = ""
+        with t.step("embed"):
+            query_vector = await embed_fn(query)
+        with t.step("semantic"):
+            semantic_hits = await self.semantic_search.search(session, query_vector)
+        with t.step("bm25"):
+            bm25_hits = await self.bm25_search.search(session, query)
+        with t.step("expand"):
+            merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
+            l2_chunks = await expand_to_l2(session, merged)
+        with t.step("rerank"):
+            reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
+
         effective_memory_search = memory_search or self.memory_search
+        mem_hits = []
         if effective_memory_search:
-            mem_hits = await effective_memory_search.search(session, query_vector)
-            if mem_hits:
-                lines = "\n".join(f"- {h.content} [memory]" for h in mem_hits[:5])
-                memory_prefix = f"Personal facts about the user:\n{lines}\n\n"
+            with t.step("memory"):
+                mem_hits = await effective_memory_search.search(session, query_vector)
 
-        final_prompt = memory_prefix + ctx.prompt
+        ctx = self.context_builder.build(query, reranked, memory_hits=mem_hits)
+        t.log()  # log before streaming starts
 
-        async for token in self.llm_provider.complete_stream(final_prompt):
+        async for token in self.llm_provider.complete_stream(ctx.prompt):
             yield {"type": "token", "data": token}
 
         yield {"type": "sources", "data": ctx.sources}
