@@ -16,26 +16,11 @@ Personal RAG system — indexes your documents and answers questions about them 
 ## Quick start
 
 ```bash
-# 1. Start PostgreSQL
-docker compose up -d postgres
-
-# 2. Apply migrations
-alembic upgrade head
-
-# 3. Configure
-cp .env.example .env
-# Fill in OPENAI_API_KEY and/or ANTHROPIC_API_KEY
-
-# 4. Run
-uvicorn src.main:app --reload
+curl -O https://raw.githubusercontent.com/Isqanderm/memex/main/docker-compose.prod.yml
+curl -O https://raw.githubusercontent.com/Isqanderm/memex/main/.env.example
+cp .env.example .env  # fill in OPENAI_API_KEY and POSTGRES_PASSWORD
+docker compose -f docker-compose.prod.yml up -d
 # → http://localhost:8000
-```
-
-## Or with Docker Compose (full stack)
-
-```bash
-cp .env.example .env   # fill in API keys
-docker compose up
 ```
 
 ## Usage
@@ -75,7 +60,7 @@ Add to `.claude/settings.json`:
 }
 ```
 
-Available tools: `add_document`, `query`, `find_related`, `recall_related`.
+Available tools: `remember`, `recall`, `index_file`, `check_indexing`, `list_memories`, `forget`.
 
 ## Hermes Integration
 
