@@ -27,7 +27,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  app:
+  memex:
     image: ghcr.io/isqanderm/memex:latest
     ports:
       - "8000:8000"
