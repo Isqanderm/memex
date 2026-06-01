@@ -2,6 +2,22 @@ import pytest
 from pydantic import ValidationError
 from src.config import Settings
 
+# pydantic-settings reads OS env vars even when _env_file=None.
+# This fixture ensures tests are not polluted by a sourced .env in the shell.
+_SETTINGS_ENV_VARS = [
+    "DATABASE_URL", "LLM_PROVIDER", "LLM_MODEL", "LLM_MAX_TOKENS", "LLM_TEMPERATURE",
+    "OPENAI_LLM_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+    "LOCAL_EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS",
+    "L2_CHUNK_SIZE", "L1_CHUNK_SIZE", "L2_CHUNK_OVERLAP",
+    "SEMANTIC_TOP_K", "BM25_TOP_K", "RRF_K", "RERANKER_TOP_N", "UPLOAD_DIR",
+]
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_env(monkeypatch):
+    for var in _SETTINGS_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
 
 def _base(**kwargs) -> dict:
     """Minimal valid settings dict — extend per test."""
