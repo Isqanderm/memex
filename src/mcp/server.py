@@ -2,8 +2,11 @@
 MCP Server для Memex — персистентная память для AI-агентов.
 
 Инструменты:
-  remember(content, title?, tags?)  — сохранить текст как воспоминание (async)
+  remember(content)                 — сохранить текст как воспоминание (извлекает факты)
   recall(query, raw?)               — найти релевантные воспоминания
+  context()                         — получить профиль пользователя (static + dynamic)
+  observe(conversation)             — извлечь факты из разговора и сохранить
+  memories()                        — список всех активных воспоминаний
   index_file(path)                  — проиндексировать файл с диска (async)
   check_indexing(job_id)            — проверить готовность индексации
   list_memories()                   — список всех документов в базе
@@ -22,7 +25,6 @@ MCP Server для Memex — персистентная память для AI-а
 """
 import asyncio
 import os
-import tempfile
 from pathlib import Path
 
 import httpx
@@ -44,26 +46,13 @@ async def list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="remember",
-            description=(
-                "Сохранить текст как воспоминание в долгосрочную память. "
-                "Индексация асинхронная — используй check_indexing(job_id) чтобы "
-                "убедиться что память готова к поиску."
-            ),
+            description="Save text as a memory — extracts atomic facts, resolves conflicts with existing memories.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "content": {
                         "type": "string",
                         "description": "Текст для запоминания",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Короткое название воспоминания (опционально)",
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Теги для классификации, например ['meeting', 'client']",
                     },
                 },
                 "required": ["content"],
@@ -96,6 +85,36 @@ async def list_tools() -> list[types.Tool]:
                 },
                 "required": ["query"],
             },
+        ),
+        types.Tool(
+            name="context",
+            description=(
+                "Get the user's current profile as static (stable facts) and dynamic (recent activity). "
+                "Call this as the FIRST tool at the start of every session."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="observe",
+            description=(
+                "Extract facts from a conversation history and save to memory. "
+                "Call this as the LAST tool at the end of every session, passing the full conversation."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "conversation": {
+                        "type": "string",
+                        "description": "Full conversation history as text",
+                    }
+                },
+                "required": ["conversation"],
+            },
+        ),
+        types.Tool(
+            name="memories",
+            description="List all active memories with their content, source, and timestamps.",
+            inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="index_file",
@@ -164,6 +183,12 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             return await _remember(client, arguments)
         elif name == "recall":
             return await _recall(client, arguments)
+        elif name == "context":
+            return await _context(client)
+        elif name == "observe":
+            return await _observe(client, arguments)
+        elif name == "memories":
+            return await _memories(client)
         elif name == "index_file":
             return await _index_file(client, arguments)
         elif name == "check_indexing":
@@ -182,44 +207,63 @@ def _text(s: str) -> list[types.TextContent]:
 
 async def _remember(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     content = args["content"]
-    title = args.get("title") or content[:60].replace("\n", " ")
-    tags = args.get("tags", [])
+    resp = await client.post(
+        f"{BASE_URL}/api/memory/remember",
+        json={"content": content, "source": "explicit"},
+    )
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    data = resp.json()
+    return _text(
+        f"Remembered. Facts extracted: {data['facts_extracted']}, "
+        f"memories updated: {data['memories_updated']}"
+    )
 
-    # Save to temp file and upload
-    safe_title = "".join(c if c.isalnum() or c in "-_ " else "_" for c in title)[:80]
-    suffix = f"{safe_title}.txt"
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=f"-{suffix}", delete=False, encoding="utf-8") as f:
-        f.write(content)
-        tmp_path = f.name
+async def _context(client: httpx.AsyncClient) -> list[types.TextContent]:
+    resp = await client.get(f"{BASE_URL}/api/memory/context")
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    data = resp.json()
+    lines = []
+    if data.get("static"):
+        lines.append(f"User profile: {data['static']}")
+    if data.get("dynamic"):
+        lines.append(f"Recent context: {data['dynamic']}")
+    if not lines:
+        lines.append("No memories yet.")
+    lines.append(f"(Total memories: {data.get('raw_count', 0)})")
+    return _text("\n".join(lines))
 
-    try:
-        with open(tmp_path, "rb") as f:
-            resp = await client.post(
-                f"{BASE_URL}/api/documents",
-                files={"file": (suffix, f, "text/plain")},
-            )
-        resp.raise_for_status()
-        data = resp.json()
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
 
-    status = data.get("status")
-    job_id = data.get("job_id")
-    doc_id = data.get("doc_id")
+async def _observe(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+    conversation = args["conversation"]
+    resp = await client.post(
+        f"{BASE_URL}/api/memory/observe",
+        json={"conversation": conversation},
+    )
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    data = resp.json()
+    return _text(
+        f"Session observed. Facts extracted: {data['facts_extracted']}, "
+        f"memories updated: {data['memories_updated']}"
+    )
 
-    if status == "already_indexed":
-        return _text(f"Уже проиндексировано (doc_id: {doc_id})")
 
-    if status in ("pending", "already_queued") and job_id:
-        _pending_metadata[job_id] = {"title": title, "tags": tags}
-        return _text(
-            f"Принято в очередь индексации.\n"
-            f"job_id: {job_id}\n"
-            f"Используй check_indexing('{job_id}') чтобы убедиться что память готова."
-        )
-
-    return _text(f"Неожиданный ответ: {data}")
+async def _memories(client: httpx.AsyncClient) -> list[types.TextContent]:
+    resp = await client.get(f"{BASE_URL}/api/memory/list")
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    mems = resp.json()
+    if not mems:
+        return _text("No active memories.")
+    lines = []
+    for m in mems:
+        rel = f" [{m['relation']}]" if m.get("relation") else ""
+        date = (m.get("created_at") or "")[:10]
+        lines.append(f"• {m['content']}{rel}\n  id: {m['id']}  |  {m['source']}  |  {date}")
+    return _text(f"Active memories: {len(mems)}\n\n" + "\n\n".join(lines))
 
 
 async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
@@ -361,13 +405,17 @@ async def _list_memories(client: httpx.AsyncClient) -> list[types.TextContent]:
 
 async def _forget(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     doc_id = args["doc_id"]
-    resp = await client.delete(f"{BASE_URL}/api/documents/{doc_id}")
-    if resp.status_code == 204:
-        return _text(f"✓ Удалено (doc_id: {doc_id})")
-    elif resp.status_code == 404:
-        return _text(f"Документ не найден: {doc_id}")
-    else:
-        return _text(f"Ошибка: {resp.status_code}")
+    # Try memory endpoint first
+    resp = await client.delete(f"{BASE_URL}/api/memory/{doc_id}")
+    if resp.status_code in (200, 204):
+        return _text(f"✓ Memory deleted (id: {doc_id})")
+    if resp.status_code == 404:
+        # Fall back to document endpoint
+        resp2 = await client.delete(f"{BASE_URL}/api/documents/{doc_id}")
+        if resp2.status_code == 204:
+            return _text(f"✓ Document deleted (doc_id: {doc_id})")
+        return _text(f"Not found: {doc_id}")
+    return _text(f"Error: {resp.status_code}")
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
