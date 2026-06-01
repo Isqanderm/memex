@@ -110,7 +110,7 @@ async def search(
             f'<div class="exchange">'
             f'<div class="user-bubble-wrap"><div class="user-bubble">{safe_query}</div></div>'
             f'<div class="bot-bubble-wrap"><div class="bot-avatar">⬡</div>'
-            f'<div class="bot-bubble" style="color:#f87171">Ошибка: {safe_error}</div></div>'
+            f'<div class="bot-bubble" style="color:#f87171">Error: {safe_error}</div></div>'
             f'</div>',
             status_code=200,
         )

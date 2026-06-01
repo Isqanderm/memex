@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Документы{% endblock %}
+{% block title %}Documents{% endblock %}
 
 {% macro doc_icon(mime) %}
   {%- if (mime or '') == 'application/pdf' %}📄
@@ -15,10 +15,10 @@
 
 <div class="page-header">
   <div>
-    <div class="page-title">Документы</div>
-    <div class="page-subtitle">Проиндексированные файлы базы знаний</div>
+    <div class="page-title">Documents</div>
+    <div class="page-subtitle">Indexed knowledge base files</div>
   </div>
-  <a href="/upload" class="btn-primary">⬆ Загрузить</a>
+  <a href="/upload" class="btn-primary">⬆ Upload</a>
 </div>
 
 <div class="page-body">
@@ -26,7 +26,7 @@
   {% include "_jobs_fragment.html" %}
 
   <div>
-    <div class="section-label">Проиндексировано · {{ docs | length }}</div>
+    <div class="section-label">Indexed · {{ docs | length }}</div>
     {% if docs %}
     <div class="doc-list">
       {% for doc in docs %}
@@ -39,14 +39,14 @@
             {% if doc.indexed_at %} · {{ doc.indexed_at.strftime('%d %b %Y') }}{% endif %}
           </div>
         </div>
-        <span class="badge badge-done">✓ готов</span>
+        <span class="badge badge-done">✓ ready</span>
       </div>
       {% endfor %}
     </div>
     {% else %}
     <div class="empty-state">
       <div class="empty-state-icon">📄</div>
-      <div>Документов пока нет. <a href="/upload">Загрузить первый</a></div>
+      <div>No documents yet. <a href="/upload">Upload the first one</a></div>
     </div>
     {% endif %}
   </div>
