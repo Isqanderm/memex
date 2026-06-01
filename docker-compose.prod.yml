@@ -5,11 +5,11 @@
 #
 # Required .env on server (copy from .env.example and fill):
 #   POSTGRES_PASSWORD=<strong-password>
-#   DATABASE_URL=postgresql+asyncpg://memex:<password>@postgres:5432/memex
-#   OPENAI_API_KEY=sk-...   (or ANTHROPIC_API_KEY)
 #   LLM_PROVIDER=openai
-#   EMBEDDING_MODEL=text-embedding-3-small
-#   SECRET_KEY=<random-string>
+#   LLM_MODEL=gpt-4o
+#   OPENAI_LLM_API_KEY=sk-...   (or ANTHROPIC_API_KEY for claude)
+#
+# Embeddings are local (intfloat/multilingual-e5-small) — no API key needed.
 
 services:
   postgres:

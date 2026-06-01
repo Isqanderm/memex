@@ -21,15 +21,22 @@ RUN pip install --no-cache-dir \
 # Устанавливаем остальные зависимости (torch уже есть — CPU версия останется)
 RUN pip install --no-cache-dir -e .
 
-# Скачиваем reranker модель в образ — чтобы первый запрос не ждал загрузки ~87MB
-RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+# Download models into image — no cold-start delay on first request.
+# Reranker: ~87MB, Embedding: ~117MB
+RUN python -c "
+from sentence_transformers import CrossEncoder, SentenceTransformer
+CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+SentenceTransformer('intfloat/multilingual-e5-small')
+print('Models downloaded.')
+"
 
-# Копируем исходники
+# Copy application code
 COPY src/ src/
 COPY alembic/ alembic/
 COPY alembic.ini .
 COPY templates/ templates/
 COPY static/ static/
+COPY scripts/ scripts/
 
 # Создаём нужные директории
 RUN mkdir -p data/uploads
