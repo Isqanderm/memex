@@ -1,0 +1,50 @@
+{
+  "sessions": [
+    {
+      "id": "s1",
+      "ingestion": [
+        "I work at Acme Corp as a backend engineer.",
+        "I prefer Python for backend and TypeScript for frontend.",
+        "I now work at Beta Ltd — just got a new job!"
+      ],
+      "questions": [
+        {
+          "q": "Where does the user work?",
+          "expected_keyword": "Beta",
+          "anti_keyword": "Acme"
+        },
+        {
+          "q": "What programming languages does the user prefer?",
+          "expected_keyword": "Python"
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "ingestion": [
+        "I live in Moscow.",
+        "I moved to Saint Petersburg last month."
+      ],
+      "questions": [
+        {
+          "q": "Where does the user live?",
+          "expected_keyword": "Petersburg",
+          "anti_keyword": "Moscow"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "ingestion": [
+        "I was born in 1990.",
+        "I started working as a developer in 2015."
+      ],
+      "questions": [
+        {
+          "q": "How many years of development experience does the user have?",
+          "expected_keyword": "10"
+        }
+      ]
+    }
+  ]
+}
