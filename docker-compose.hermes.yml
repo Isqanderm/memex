@@ -1,5 +1,9 @@
 # Hermes integration overlay.
-# Usage:
+# Usage (production — pre-built image):
+#   HERMES_NETWORK=<your_hermes_network> \
+#     docker compose -f docker-compose.prod.yml -f docker-compose.hermes.yml up -d
+#
+# Usage (development — local build):
 #   HERMES_NETWORK=<your_hermes_network> \
 #     docker compose -f docker-compose.yml -f docker-compose.hermes.yml up -d
 #
