@@ -73,8 +73,10 @@ from src.api import documents as docs_router
 from src.api import query as query_router
 from src.api import jobs as jobs_router
 from src.ui import pages as ui_router
+from src.api.memories import router as memory_router
 
 app.include_router(docs_router.router, prefix="/api")
 app.include_router(query_router.router, prefix="/api")
 app.include_router(jobs_router.router, prefix="/api")
 app.include_router(ui_router.router)
+app.include_router(memory_router)
