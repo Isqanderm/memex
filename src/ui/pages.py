@@ -129,7 +129,7 @@ async def search_stream(
     memory_search = MemorySearch(repo=MemoryRepository(session))
 
     async def embed(text: str) -> list[float]:
-        return (await client.embed_batch([text]))[0]
+        return (await client.embed_batch([text], is_query=True))[0]
 
     async def generate():
         try:

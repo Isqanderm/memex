@@ -8,7 +8,7 @@ from src.adapters.docx import DocxAdapter
 from src.adapters.markitdown_adapter import MarkItDownAdapter
 from src.ingestion.chunker import SmallToBigChunker
 from src.ingestion.language import LanguageDetector
-from src.ingestion.embedding import EmbeddingStage, OpenAIEmbeddingClient
+from src.ingestion.embedding import EmbeddingStage, OpenAIEmbeddingClient, LocalEmbeddingClient
 from src.ingestion.indexing import IndexingStage
 from src.ingestion.pipeline import IngestionPipeline
 from src.retrieval.semantic import SemanticSearch
@@ -38,6 +38,8 @@ def get_adapter_registry() -> AdapterRegistry:
 @lru_cache
 def get_embedding_client():
     settings = get_settings()
+    if settings.embedding_provider == "local":
+        return LocalEmbeddingClient(model=settings.local_embedding_model)
     return OpenAIEmbeddingClient(
         api_key=settings.openai_api_key,
         model=settings.embedding_model,

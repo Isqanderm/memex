@@ -39,7 +39,7 @@ class Chunk(Base):
     next_chunk_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("chunks.id"))
     language: Mapped[str] = mapped_column(String(20), default="simple")
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    content_vector: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    content_vector: Mapped[list[float] | None] = mapped_column(Vector(384))
 
     document: Mapped["Document"] = relationship(back_populates="chunks")
 
@@ -70,7 +70,7 @@ class Memory(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("memories.id"), nullable=True
     )
-    content_vector: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    content_vector: Mapped[list[float] | None] = mapped_column(Vector(384))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

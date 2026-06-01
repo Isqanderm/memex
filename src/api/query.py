@@ -28,7 +28,7 @@ async def query_documents(
     embedding_client = get_embedding_client()
 
     async def embed(text: str) -> list[float]:
-        results = await embedding_client.embed_batch([text])
+        results = await embedding_client.embed_batch([text], is_query=True)
         return results[0]
 
     # Create per-request memory search with session-scoped repository
@@ -52,7 +52,7 @@ async def search_chunks(
     embedding_client = get_embedding_client()
 
     async def embed(text: str) -> list[float]:
-        results = await embedding_client.embed_batch([text])
+        results = await embedding_client.embed_batch([text], is_query=True)
         return results[0]
 
     # Create per-request memory search with session-scoped repository (for consistency, even if not used by search_chunks)

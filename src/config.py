@@ -8,10 +8,14 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # OpenAI Embeddings (always required — used regardless of LLM provider)
-    openai_api_key: str
+    # Embeddings
+    embedding_provider: Literal["openai", "local"] = "local"
+    local_embedding_model: str = "intfloat/multilingual-e5-small"
+    embedding_dimensions: int = 384  # 384 for local models, 1536 for openai
+
+    # OpenAI Embeddings (only required when embedding_provider=openai)
+    openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
 
     # LLM — both fields are required, no defaults
     llm_provider: Literal["claude", "openai"]
