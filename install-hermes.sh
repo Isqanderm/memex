@@ -71,7 +71,7 @@ else
 OPENAI_API_KEY=${OPENAI_API_KEY}
 OPENAI_LLM_API_KEY=${OPENAI_API_KEY}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-DATABASE_URL=postgresql+asyncpg://memex:${POSTGRES_PASSWORD}@memex-db:5432/memex
+DATABASE_URL=postgresql+asyncpg://memex:${POSTGRES_PASSWORD}@postgres:5432/memex
 LLM_PROVIDER=openai
 LLM_MODEL=gpt-4o-mini
 UPLOAD_DIR=data/uploads
