@@ -46,6 +46,7 @@ class RetrievalService:
         session: AsyncSession,
         query: str,
         embed_fn,
+        memory_search: "MemorySearch | None" = None,
     ) -> QueryResult:
         query_vector = await embed_fn(query)
 
@@ -62,8 +63,9 @@ class RetrievalService:
 
         # Prepend memory context if memory_search is configured
         memory_prefix = ""
-        if self.memory_search:
-            mem_hits = await self.memory_search.search(session, query_vector)
+        effective_memory_search = memory_search or self.memory_search
+        if effective_memory_search:
+            mem_hits = await effective_memory_search.search(session, query_vector)
             if mem_hits:
                 lines = "\n".join(f"- {h.content} [memory]" for h in mem_hits[:5])
                 memory_prefix = f"Personal facts about the user:\n{lines}\n\n"
@@ -109,6 +111,7 @@ class RetrievalService:
         session: AsyncSession,
         query: str,
         embed_fn,
+        memory_search: "MemorySearch | None" = None,
     ) -> AsyncIterator[dict]:
         query_vector = await embed_fn(query)
         semantic_hits = await self.semantic_search.search(session, query_vector)
@@ -120,8 +123,9 @@ class RetrievalService:
 
         # Prepend memory context if memory_search is configured
         memory_prefix = ""
-        if self.memory_search:
-            mem_hits = await self.memory_search.search(session, query_vector)
+        effective_memory_search = memory_search or self.memory_search
+        if effective_memory_search:
+            mem_hits = await effective_memory_search.search(session, query_vector)
             if mem_hits:
                 lines = "\n".join(f"- {h.content} [memory]" for h in mem_hits[:5])
                 memory_prefix = f"Personal facts about the user:\n{lines}\n\n"
