@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Поиск{% endblock %}
+{% block title %}Search{% endblock %}
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">Поиск по документам</div>
-    <div class="page-subtitle">Задай вопрос — получи ответ со ссылками на источники</div>
+    <div class="page-title">Search Documents</div>
+    <div class="page-subtitle">Ask a question — get an answer with source references</div>
   </div>
 </div>
 
@@ -13,7 +13,7 @@
   {% if not doc_count %}
   <div class="empty-state">
     <div class="empty-state-icon">🔍</div>
-    <div>База знаний пуста. <a href="/upload">Загрузи документы</a> чтобы начать поиск.</div>
+    <div>Knowledge base is empty. <a href="/upload">Upload documents</a> to start searching.</div>
   </div>
   {% endif %}
 </div>
@@ -32,13 +32,13 @@
              id="query-input"
              type="text"
              name="query"
-             placeholder="Задай вопрос..."
+             placeholder="Ask a question..."
              autocomplete="off"
              required>
       <button class="chat-send-btn" id="send-btn" type="submit">↑</button>
     </div>
   </form>
-  <div class="chat-input-hint">Enter для отправки</div>
+  <div class="chat-input-hint">Press Enter to send</div>
 </div>
 
 {% endblock %}
@@ -108,7 +108,7 @@
       botBubble.replaceChildren();
       var errSpan = document.createElement('span');
       errSpan.style.color = '#f87171';
-      errSpan.textContent = '⚠ Не удалось получить ответ. Попробуй ещё раз.';
+      errSpan.textContent = '⚠ Could not get a response. Please try again.';
       botBubble.appendChild(errSpan);
     }
 
@@ -152,8 +152,8 @@
                 a.href = '/api/documents/' + s.doc_id + '/file';
                 a.target = '_blank';
                 a.rel = 'noopener';
-                var name = s.filename || (s.title && s.title !== '(anonymous)' && s.title) || ('источник ' + s.index);
-                a.textContent = '📄 ' + name + (s.page ? ' · стр. ' + s.page : '');
+                var name = s.filename || (s.title && s.title !== '(anonymous)' && s.title) || ('source ' + s.index);
+                a.textContent = '📄 ' + name + (s.page ? ' · p. ' + s.page : '');
                 tagsDiv.appendChild(a);
               });
               if (botBubble && tagsDiv.childElementCount) botBubble.appendChild(tagsDiv);

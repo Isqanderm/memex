@@ -11,9 +11,9 @@ class QueryContext:
 
 class ContextBuilder:
     SYSTEM = (
-        "Отвечай только на основе предоставленных источников. "
-        "Если ответа нет в источниках — скажи об этом явно. "
-        "Цитируй источники как [1], [2] и т.д."
+        "Answer only based on the provided sources. "
+        "If the answer is not in the sources — say so explicitly. "
+        "Cite sources as [1], [2], etc."
     )
 
     def build(self, query: str, chunks: list[L2Chunk]) -> QueryContext:
@@ -27,7 +27,7 @@ class ContextBuilder:
             if chunk.section_heading:
                 parts.append(f"— {chunk.section_heading}")
             if chunk.page_number:
-                parts.append(f"(стр. {chunk.page_number})")
+                parts.append(f"(p. {chunk.page_number})")
 
             sources_text += "\n" + " ".join(parts) + "\n"
             sources_text += "---\n"
@@ -45,5 +45,5 @@ class ContextBuilder:
                 "filename": filename,
             })
 
-        prompt = f"{self.SYSTEM}\n\nИсточники:\n{sources_text}\nВопрос: {query}"
+        prompt = f"{self.SYSTEM}\n\nSources:\n{sources_text}\nQuestion: {query}"
         return QueryContext(prompt=prompt, sources=sources_meta)

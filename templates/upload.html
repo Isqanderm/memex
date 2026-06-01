@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Загрузить{% endblock %}
+{% block title %}Upload{% endblock %}
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">Загрузить документ</div>
-    <div class="page-subtitle">Перетащи файлы или выбери вручную — поддержка множественной загрузки</div>
+    <div class="page-title">Upload Document</div>
+    <div class="page-subtitle">Drag files or choose manually — multiple upload supported</div>
   </div>
 </div>
 
@@ -13,8 +13,8 @@
 
   <div class="dropzone" id="dropzone">
     <div style="font-size:32px;opacity:.6;">📂</div>
-    <div class="dropzone-title">Перетащи файлы сюда</div>
-    <div class="dropzone-sub">или <strong>нажми для выбора</strong></div>
+    <div class="dropzone-title">Drop files here</div>
+    <div class="dropzone-sub">or <strong>click to choose</strong></div>
     <div class="fmt-badges">
       {% for fmt in ['PDF','DOCX','TXT','MD','PPTX','XLSX','EPUB'] %}
         <span class="fmt-badge">{{ fmt }}</span>
@@ -26,7 +26,7 @@
   </div>
 
   <div id="file-queue" style="display:none;">
-    <div class="section-label" id="queue-label">Очередь</div>
+    <div class="section-label" id="queue-label">Queue</div>
     <div id="file-list" style="display:flex;flex-direction:column;gap:6px;"></div>
   </div>
 
@@ -42,7 +42,7 @@
   const fileList  = document.getElementById('file-list');
   const queueLabel = document.getElementById('queue-label');
 
-  const STEPS = ['загружен', 'разбор', 'чанкинг', 'эмбеддинг'];
+  const STEPS = ['uploaded', 'parsing', 'chunking', 'embedding'];
 
   /* ── Drag & drop ── */
   dropzone.addEventListener('click', () => fileInput.click());
@@ -90,11 +90,11 @@
   function makeBadgeEl(status, error) {
     var span = document.createElement('span');
     span.className = 'badge ';
-    if (status === 'done')            { span.className += 'badge-done';   span.textContent = '✓ готов'; }
-    else if (status === 'error')      { span.className += 'badge-error';  span.textContent = '✕ ошибка'; if (error) span.setAttribute('title', error); }
-    else if (status === 'already_indexed') { span.className += 'badge-dup'; span.textContent = '⚠ дубликат'; }
-    else if (status === 'processing') { span.className += 'badge-queued'; span.textContent = '⟳ индексация'; }
-    else                              { span.className += 'badge-queued'; span.textContent = '⏳ очередь'; }
+    if (status === 'done')            { span.className += 'badge-done';   span.textContent = '✓ ready'; }
+    else if (status === 'error')      { span.className += 'badge-error';  span.textContent = '✕ error'; if (error) span.setAttribute('title', error); }
+    else if (status === 'already_indexed') { span.className += 'badge-dup'; span.textContent = '⚠ duplicate'; }
+    else if (status === 'processing') { span.className += 'badge-queued'; span.textContent = '⟳ indexing'; }
+    else                              { span.className += 'badge-queued'; span.textContent = '⏳ queue'; }
     return span;
   }
 
@@ -176,7 +176,7 @@
 
   function updateQueueLabel() {
     var n = fileList.querySelectorAll('.file-item').length;
-    queueLabel.textContent = 'Очередь · ' + n + (n === 1 ? ' файл' : ' файла');
+    queueLabel.textContent = 'Queue · ' + n + (n === 1 ? ' file' : ' files');
   }
 })();
 </script>
