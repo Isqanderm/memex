@@ -5,7 +5,7 @@
      hx-swap="outerHTML"
      {% endif %}>
   {% if active_jobs %}
-  <div class="section-label">В обработке · {{ active_jobs | length }}</div>
+  <div class="section-label">Processing · {{ active_jobs | length }}</div>
   {% for job in active_jobs %}
   <div class="processing-banner">
     <div class="spinner"></div>
@@ -13,7 +13,7 @@
       <div class="processing-name">{{ (job.source or '').split('/')[-1] or job.source }}</div>
       <div class="processing-status">
         {% if job.status == 'error' %}
-          <span style="color:#f87171">Ошибка: {{ job.error or 'неизвестно' }}</span>
+          <span style="color:#f87171">Error: {{ job.error or 'unknown' }}</span>
         {% else %}
           {{ job.status }}
         {% endif %}
