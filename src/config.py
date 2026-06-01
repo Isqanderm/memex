@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     # LLM — both fields are required, no defaults
     llm_provider: Literal["claude", "openai"]
     llm_model: str
+    llm_max_tokens: int = 2048
+    llm_temperature: float = 0.1
 
     # LLM credentials — one must be set depending on llm_provider
     anthropic_api_key: str | None = None   # required when llm_provider=claude
