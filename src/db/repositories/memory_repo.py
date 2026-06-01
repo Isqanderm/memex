@@ -61,18 +61,19 @@ class MemoryRepository:
         limit: int = 5,
         threshold: float = 0.75,
     ) -> list[tuple[Memory, float]]:
+        # Inline vector like SemanticSearch does — SQLAlchemy text() mishandles :param::type cast
         vec_str = "[" + ",".join(str(x) for x in vector) + "]"
         rows = await self.session.execute(
-            text("""
-                SELECT id, 1 - (content_vector <=> :vec::vector) AS score
+            text(f"""
+                SELECT id, 1 - (content_vector <=> '{vec_str}'::vector) AS score
                 FROM memories
                 WHERE is_active = TRUE
                   AND content_vector IS NOT NULL
-                  AND 1 - (content_vector <=> :vec::vector) >= :threshold
-                ORDER BY content_vector <=> :vec::vector
+                  AND 1 - (content_vector <=> '{vec_str}'::vector) >= :threshold
+                ORDER BY content_vector <=> '{vec_str}'::vector
                 LIMIT :limit
             """),
-            {"vec": vec_str, "threshold": threshold, "limit": limit},
+            {"threshold": threshold, "limit": limit},
         )
         ids_scores = [(row.id, row.score) for row in rows]
         if not ids_scores:
