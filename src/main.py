@@ -50,7 +50,12 @@ async def lifespan(app: FastAPI):
     )
     _worker_task = asyncio.create_task(worker.start())
     _expiry_task = asyncio.create_task(_memory_expiry_loop(session_factory))
-    logger.info("Memex started")
+
+    # Warm up reranker model so first query isn't slow
+    from src.dependencies import get_retrieval_service
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, get_retrieval_service().reranker._get_model)
+    logger.info("Memex started (reranker warmed up)")
 
     yield
 
