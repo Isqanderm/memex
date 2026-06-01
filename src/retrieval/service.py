@@ -9,6 +9,8 @@ from src.retrieval.expand import expand_to_l2
 from src.retrieval.reranker import Reranker
 from src.retrieval.context import ContextBuilder
 from src.llm.protocol import LLMProvider
+from src.retrieval.memory_search import MemorySearch, MemoryHit
+from src.profiling import StepTimer
 
 
 @dataclass
@@ -29,6 +31,7 @@ class RetrievalService:
         llm_provider: LLMProvider,
         rrf_k: int = 60,
         reranker_top_n: int = 5,
+        memory_search: "MemorySearch | None" = None,
     ):
         self.semantic_search = semantic_search
         self.bm25_search = bm25_search
@@ -37,27 +40,42 @@ class RetrievalService:
         self.llm_provider = llm_provider
         self.rrf_k = rrf_k
         self.reranker_top_n = reranker_top_n
+        self.memory_search = memory_search
 
     async def query(
         self,
         session: AsyncSession,
         query: str,
         embed_fn,
+        memory_search: "MemorySearch | None" = None,
     ) -> QueryResult:
-        query_vector = await embed_fn(query)
+        t = StepTimer("query")
 
-        # Последовательно — AsyncSession не поддерживает конкурентные операции
-        # на одном объекте (SQLAlchemy isce error при asyncio.gather).
-        semantic_hits = await self.semantic_search.search(session, query_vector)
-        bm25_hits = await self.bm25_search.search(session, query)
+        with t.step("embed"):
+            query_vector = await embed_fn(query)
 
-        merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
-        l2_chunks = await expand_to_l2(session, merged)
-        reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
+        with t.step("semantic"):
+            semantic_hits = await self.semantic_search.search(session, query_vector)
+        with t.step("bm25"):
+            bm25_hits = await self.bm25_search.search(session, query)
+        with t.step("expand"):
+            merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
+            l2_chunks = await expand_to_l2(session, merged)
+        with t.step("rerank"):
+            reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
 
-        ctx = self.context_builder.build(query, reranked)
-        llm_response = await self.llm_provider.complete(ctx.prompt)
+        effective_memory_search = memory_search or self.memory_search
+        mem_hits = []
+        if effective_memory_search:
+            with t.step("memory"):
+                mem_hits = await effective_memory_search.search(session, query_vector)
 
+        ctx = self.context_builder.build(query, reranked, memory_hits=mem_hits)
+
+        with t.step("llm"):
+            llm_response = await self.llm_provider.complete(ctx.prompt)
+
+        t.log()
         return QueryResult(
             answer=llm_response.answer,
             sources=ctx.sources,
@@ -96,14 +114,30 @@ class RetrievalService:
         session: AsyncSession,
         query: str,
         embed_fn,
+        memory_search: "MemorySearch | None" = None,
     ) -> AsyncIterator[dict]:
-        query_vector = await embed_fn(query)
-        semantic_hits = await self.semantic_search.search(session, query_vector)
-        bm25_hits = await self.bm25_search.search(session, query)
-        merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
-        l2_chunks = await expand_to_l2(session, merged)
-        reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
-        ctx = self.context_builder.build(query, reranked)
+        t = StepTimer("stream")
+
+        with t.step("embed"):
+            query_vector = await embed_fn(query)
+        with t.step("semantic"):
+            semantic_hits = await self.semantic_search.search(session, query_vector)
+        with t.step("bm25"):
+            bm25_hits = await self.bm25_search.search(session, query)
+        with t.step("expand"):
+            merged = rrf_merge(semantic_hits, bm25_hits, k=self.rrf_k)
+            l2_chunks = await expand_to_l2(session, merged)
+        with t.step("rerank"):
+            reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
+
+        effective_memory_search = memory_search or self.memory_search
+        mem_hits = []
+        if effective_memory_search:
+            with t.step("memory"):
+                mem_hits = await effective_memory_search.search(session, query_vector)
+
+        ctx = self.context_builder.build(query, reranked, memory_hits=mem_hits)
+        t.log()  # log before streaming starts
 
         async for token in self.llm_provider.complete_stream(ctx.prompt):
             yield {"type": "token", "data": token}

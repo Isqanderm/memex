@@ -2,6 +2,22 @@ import pytest
 from pydantic import ValidationError
 from src.config import Settings
 
+# pydantic-settings reads OS env vars even when _env_file=None.
+# This fixture ensures tests are not polluted by a sourced .env in the shell.
+_SETTINGS_ENV_VARS = [
+    "DATABASE_URL", "LLM_PROVIDER", "LLM_MODEL", "LLM_MAX_TOKENS", "LLM_TEMPERATURE",
+    "OPENAI_LLM_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+    "LOCAL_EMBEDDING_MODEL", "EMBEDDING_DIMENSIONS",
+    "L2_CHUNK_SIZE", "L1_CHUNK_SIZE", "L2_CHUNK_OVERLAP",
+    "SEMANTIC_TOP_K", "BM25_TOP_K", "RRF_K", "RERANKER_TOP_N", "UPLOAD_DIR",
+]
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_env(monkeypatch):
+    for var in _SETTINGS_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
 
 def _base(**kwargs) -> dict:
     """Minimal valid settings dict — extend per test."""
@@ -27,7 +43,7 @@ def test_settings_claude_provider():
 
 def test_settings_defaults_unchanged():
     s = Settings(_env_file=None, **_base(llm_provider="openai", llm_model="gpt-4o-mini", openai_llm_api_key="sk-llm"))
-    assert s.embedding_model == "text-embedding-3-small"
+    assert s.local_embedding_model == "intfloat/multilingual-e5-small"
     assert s.l2_chunk_size == 512
     assert s.l1_chunk_size == 128
     assert s.rrf_k == 60
@@ -56,12 +72,6 @@ def test_missing_llm_model_raises():
 def test_missing_database_url_raises():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, openai_api_key="sk-test", llm_provider="openai", llm_model="gpt-4o", openai_llm_api_key="sk-llm")
-
-
-def test_missing_openai_api_key_raises():
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, database_url="postgresql+asyncpg://x:x@localhost/x",
-                 llm_provider="openai", llm_model="gpt-4o", openai_llm_api_key="sk-llm")
 
 
 # ── credential validation ──────────────────────────────────────────────────

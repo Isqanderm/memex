@@ -8,7 +8,7 @@ from src.adapters.docx import DocxAdapter
 from src.adapters.markitdown_adapter import MarkItDownAdapter
 from src.ingestion.chunker import SmallToBigChunker
 from src.ingestion.language import LanguageDetector
-from src.ingestion.embedding import EmbeddingStage, OpenAIEmbeddingClient
+from src.ingestion.embedding import EmbeddingStage, LocalEmbeddingClient
 from src.ingestion.indexing import IndexingStage
 from src.ingestion.pipeline import IngestionPipeline
 from src.retrieval.semantic import SemanticSearch
@@ -17,6 +17,11 @@ from src.retrieval.reranker import Reranker
 from src.retrieval.context import ContextBuilder
 from src.retrieval.service import RetrievalService
 from src.llm.factory import create_llm_provider
+from src.memory.extractor import FactExtractor
+from src.memory.service import MemoryService
+from src.memory.profile import ProfileService
+from src.db.repositories.memory_repo import MemoryRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @lru_cache
@@ -33,10 +38,7 @@ def get_adapter_registry() -> AdapterRegistry:
 @lru_cache
 def get_embedding_client():
     settings = get_settings()
-    return OpenAIEmbeddingClient(
-        api_key=settings.openai_api_key,
-        model=settings.embedding_model,
-    )
+    return LocalEmbeddingClient(model=settings.local_embedding_model)
 
 
 @lru_cache
@@ -66,4 +68,30 @@ def get_retrieval_service() -> RetrievalService:
         llm_provider=create_llm_provider(settings),
         rrf_k=settings.rrf_k,
         reranker_top_n=settings.reranker_top_n,
+    )
+
+
+@lru_cache
+def get_memory_extractor() -> FactExtractor:
+    settings = get_settings()
+    return FactExtractor(create_llm_provider(settings))
+
+
+@lru_cache
+def get_profile_service_instance() -> ProfileService:
+    settings = get_settings()
+    return ProfileService(llm_provider=create_llm_provider(settings))
+
+
+def get_memory_service(session: AsyncSession) -> MemoryService:
+    embedding_client = get_embedding_client()
+
+    async def embed_fn(text: str) -> list[float]:
+        results = await embedding_client.embed_batch([text])
+        return results[0]
+
+    return MemoryService(
+        repo=MemoryRepository(session),
+        extractor=get_memory_extractor(),
+        embed_fn=embed_fn,
     )

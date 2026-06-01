@@ -122,15 +122,18 @@ async def search_stream(
     session: AsyncSession = Depends(get_db_session),
 ):
     from src.dependencies import get_retrieval_service, get_embedding_client
+    from src.retrieval.memory_search import MemorySearch
+    from src.db.repositories.memory_repo import MemoryRepository
     service = get_retrieval_service()
     client = get_embedding_client()
+    memory_search = MemorySearch(repo=MemoryRepository(session))
 
     async def embed(text: str) -> list[float]:
-        return (await client.embed_batch([text]))[0]
+        return (await client.embed_batch([text], is_query=True))[0]
 
     async def generate():
         try:
-            async for event in service.query_stream(session, query, embed_fn=embed):
+            async for event in service.query_stream(session, query, embed_fn=embed, memory_search=memory_search):
                 if event["type"] == "token":
                     yield f"event: token\ndata: {json.dumps(event['data'])}\n\n"
                 elif event["type"] == "sources":

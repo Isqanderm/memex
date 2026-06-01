@@ -1,0 +1,55 @@
+{
+  "extraction_cases": [
+    {
+      "input": "I now work at Acme Corp as a senior engineer.",
+      "expected_facts": ["User works at Acme Corp as a senior engineer"]
+    },
+    {
+      "input": "Switched from Python to TypeScript for this project.",
+      "expected_facts": ["User uses TypeScript for the current project"]
+    },
+    {
+      "input": "Meeting with the team is tomorrow at 3pm.",
+      "expected_facts": ["User has a meeting with the team at 3pm tomorrow"],
+      "expected_temporal": true
+    },
+    {
+      "input": "I was born in 1990 and grew up in Moscow.",
+      "expected_facts": ["User was born in 1990", "User grew up in Moscow"]
+    },
+    {
+      "input": "Just got back from the Berlin conference. Great talks.",
+      "expected_facts": ["User attended a conference in Berlin"]
+    }
+  ],
+  "relation_cases": [
+    {
+      "new_fact": "User works at Beta Ltd",
+      "existing": [
+        {"id": "aaa-1", "content": "User works at Acme Corp"}
+      ],
+      "expected": [{"id": "aaa-1", "type": "updates"}]
+    },
+    {
+      "new_fact": "User is a senior engineer at Acme Corp",
+      "existing": [
+        {"id": "bbb-1", "content": "User works at Acme Corp"}
+      ],
+      "expected": [{"id": "bbb-1", "type": "extends"}]
+    },
+    {
+      "new_fact": "User has about 10 years of coding experience",
+      "existing": [
+        {"id": "ccc-1", "content": "User started coding professionally in 2015"}
+      ],
+      "expected": [{"id": "ccc-1", "type": "derives"}]
+    },
+    {
+      "new_fact": "User prefers dark mode",
+      "existing": [
+        {"id": "ddd-1", "content": "User works at Acme Corp"}
+      ],
+      "expected": [{"id": "ddd-1", "type": "new"}]
+    }
+  ]
+}

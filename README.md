@@ -39,12 +39,28 @@ Most document Q&A tools are SaaS — your documents leave your machine. Memex ru
 - **Configurable LLM:** Claude or GPT-4o via env variable
 - **Three interfaces:** Web UI + REST API + MCP server for Claude Code
 
+## ⚠️ Upgrading from 1.x
+
+Version 2.0 changes the embedding model (OpenAI → local `multilingual-e5-small`, 384 dims). **Existing vectors are incompatible** — migration 0004 NULLs them automatically. After upgrading you must re-index:
+
+```bash
+docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+docker exec memex alembic upgrade head
+docker exec memex uv run python scripts/reindex.py   # restores search
+```
+
+Remove from `.env`: `OPENAI_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` (no longer used for embeddings).
+
+See [CHANGELOG.md](CHANGELOG.md) for full breaking changes.
+
+---
+
 ## Quick start
 
 ```bash
 curl -O https://raw.githubusercontent.com/Isqanderm/memex/main/docker-compose.prod.yml
 curl -O https://raw.githubusercontent.com/Isqanderm/memex/main/.env.example
-cp .env.example .env  # fill in OPENAI_API_KEY and POSTGRES_PASSWORD
+cp .env.example .env  # fill in POSTGRES_PASSWORD and LLM credentials
 docker compose -f docker-compose.prod.yml up -d
 # → http://localhost:8000
 ```
@@ -86,14 +102,14 @@ Add to `.claude/settings.json`:
 }
 ```
 
-Available tools: `remember`, `recall`, `index_file`, `check_indexing`, `list_memories`, `forget`.
+Available tools: `remember`, `recall`, `context`, `observe`, `memories`, `index_file`, `check_indexing`, `forget`.
 
 ## Hermes Integration
 
 Use Memex as persistent memory for a Hermes agent.
 
 ```bash
-OPENAI_API_KEY=sk-... bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh)
+OPENAI_LLM_API_KEY=sk-... bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh)
 ```
 
 Auto-detects your Hermes container and network, starts Memex, installs the MCP bridge and skill, patches `config.yaml`, and restarts Hermes. Manual setup: [`docs/hermes.md`](docs/hermes.md).
@@ -123,7 +139,7 @@ pytest tests/integration/ -v -m integration
 
 ## Stack
 
-Python 3.12 · FastAPI · SQLAlchemy 2.0 async · PostgreSQL 15 + pgvector · Alembic · OpenAI Embeddings · sentence-transformers · Anthropic / OpenAI · Jinja2 + HTMX · MCP
+Python 3.12 · FastAPI · SQLAlchemy 2.0 async · PostgreSQL 15 + pgvector · Alembic · sentence-transformers (local embeddings) · Anthropic / OpenAI · Jinja2 + HTMX · MCP
 
 ## License
 

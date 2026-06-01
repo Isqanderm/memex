@@ -1,49 +1,90 @@
 ---
 name: memex
-description: "Personal RAG memory system — save, search, and recall information across documents and notes. Use when the user wants to remember something, find stored information, index a file, list or delete memories."
+description: "Personal memory and RAG system — evolving facts about the user, document search, session context. Use at session start (context), during session (remember/recall), and at session end (observe)."
 license: MIT
 compatibility: Requires Memex running at http://memex:8000 via Docker. See https://github.com/Isqanderm/memex for setup.
 metadata:
   author: Isqanderm
-  version: "1.0.0"
-  tags: "memory rag knowledge-base documents search"
+  version: "2.0.0"
+  tags: "memory rag knowledge-base documents search context"
 ---
 
-# Memex — Personal Knowledge Base
+# Memex — Personal Memory & Knowledge Base
 
-Memex is a personal RAG system. Use it to store, index, and semantically search documents and notes via MCP tools.
+Memex stores evolving facts about the user and indexes documents for semantic search. Facts are extracted automatically by LLM, conflict-resolved (e.g. "moved to Berlin" supersedes "lives in Moscow"), and injected into every `recall()` response.
 
-## When to Use Memex
+## Session Protocol (MANDATORY)
 
-- User says "remember", "запомни", "save", "сохрани" → `mcp_memex_remember`
-- User says "recall", "find", "найди", "что ты знаешь о" → `mcp_memex_recall`
-- User provides a file to index → `mcp_memex_index_file`
-- User wants to see what's stored → `mcp_memex_list_memories`
-- User wants to delete something → `mcp_memex_forget`
+**Start of every session:**
+```
+mcp_memex_context()   ← inject user profile into your system context
+```
+
+**End of every session:**
+```
+mcp_memex_observe(conversation)   ← extract new facts from this conversation
+```
+
+## When to Use Which Tool
+
+| Signal | Tool |
+|---|---|
+| Session just started | `mcp_memex_context` |
+| "remember", "запомни", "save this" | `mcp_memex_remember` |
+| "recall", "find", "what do you know about" | `mcp_memex_recall` |
+| User provides a file to index | `mcp_memex_index_file` |
+| "what facts do you have about me?" | `mcp_memex_memories` |
+| "list my documents" | `mcp_memex_list_memories` |
+| "forget", "delete" | `mcp_memex_forget` |
+| Session is ending | `mcp_memex_observe` |
+
+---
 
 ## Tools
+
+### mcp_memex_context — User profile (call at session START)
+
+No arguments. Returns:
+- `static` — stable facts about the user (location, job, preferences)
+- `dynamic` — recent activity and current projects
+- `raw_count` — total number of stored facts
+
+**Inject into your context:** `"User profile: {static}. Recent: {dynamic}."`
 
 ### mcp_memex_remember — Save text as a memory
 
 Arguments:
 - `content` (required) — text to remember
-- `title` (optional but recommended) — short title
-- `tags` (optional) — list of strings for organisation
 
-**Always suggest tags** based on content topic:
-- Personal preferences → `["personal", "preferences"]`
-- Meeting notes → `["meeting", "work"]`
-- Technical info → `["tech", "reference"]`
-- Project-specific → `["project-name"]`
+**Returns immediately** with `facts_extracted` and `memories_updated` counts. No job_id, no polling required. The LLM automatically extracts atomic facts and resolves conflicts with existing memories.
 
-Returns `job_id`. **You MUST call `mcp_memex_check_indexing` after this — the memory is NOT saved until the job is done.**
+Example:
+```
+mcp_memex_remember("I now work at Acme Corp as a senior engineer")
+→ {"facts_extracted": 1, "memories_updated": 0}
+```
 
-### mcp_memex_recall — Search memories
+### mcp_memex_recall — Search memories and documents
 
 Arguments:
-- `query` (required) — question or topic **in the same language as the stored content**
-- `raw` (default false) — false = LLM synthesises answer; true = raw chunks, faster/cheaper
+- `query` (required) — question or topic in the same language as stored content
+- `raw` (default false) — false = LLM answer; true = raw chunks (faster/cheaper)
 - `top_k` (default 5) — used only when raw=true
+
+Personal memory facts are automatically included in the response alongside document chunks.
+
+### mcp_memex_observe — Extract facts from conversation (call at session END)
+
+Arguments:
+- `conversation` (required) — full conversation history as text
+
+Extracts new personal facts from the conversation and saves them. Call this as the last tool before ending a session.
+
+Returns `facts_extracted` and `memories_updated`.
+
+### mcp_memex_memories — List active memory facts
+
+No arguments. Returns all active facts about the user with content, source, and timestamp. Use when user asks "what do you know about me?".
 
 ### mcp_memex_index_file — Index a file from disk
 
@@ -52,7 +93,7 @@ Arguments:
 - `tags` (optional) — list of strings
 
 Supports: PDF, DOCX, MD, TXT, PPTX, XLSX, EPUB.
-Returns `job_id`. **You MUST call `mcp_memex_check_indexing` after this.**
+Returns `job_id`. **Call `mcp_memex_check_indexing` after this.**
 
 ### mcp_memex_check_indexing — Poll indexing status
 
@@ -61,51 +102,43 @@ Arguments:
 
 Returns: `pending` / `processing` / `done` / `error`.
 - If `pending` or `processing` — wait 3 seconds and call again
-- If `done` — memory is ready to search
-- If `error` — report error to user
+- If `done` — document is ready to search
 
-### mcp_memex_list_memories — List all documents
+### mcp_memex_list_memories — List indexed documents
 
 No arguments. Returns all documents with id, title, tags, date.
 
-### mcp_memex_forget — Delete a memory
+### mcp_memex_forget — Delete a memory or document
 
 Arguments:
-- `doc_id` (required)
+- `doc_id` (required) — memory id (from `mcp_memex_memories`) or document id
 
-## Workflows
+---
 
-### Save a note (MANDATORY sequence)
-
-```
-1. mcp_memex_remember(content, title, tags)
-   → returns job_id
-2. mcp_memex_check_indexing(job_id)    ← REQUIRED, do not skip
-   → if "pending"/"processing": wait 3s, repeat step 2
-   → if "done": memory is saved, confirm to user
-   → if "error": report to user
-```
-
-**Do NOT confirm "Saved" before check_indexing returns "done".** Skipping check_indexing leaves the document without title and tags.
-
-### Answer from memory
+## Typical Session
 
 ```
-1. mcp_memex_recall(query)
-2. Present the answer and cite sources
-3. If no results: try rephrasing or say nothing was found
-```
+[Session start]
+mcp_memex_context()
+→ "User profile: Senior fullstack engineer. Prefers Python.
+   Recent: Working on Memex memory layer."
 
-### Index a file
+[During session — user says "remember I switched to TypeScript"]
+mcp_memex_remember("I now use TypeScript for all new projects")
+→ {"facts_extracted": 1, "memories_updated": 1}  # superseded Python preference
 
-```
-1. mcp_memex_index_file(path, tags)
-   → returns job_id
-2. mcp_memex_check_indexing(job_id)    ← REQUIRED
-   → poll until "done" or "error"
+[User asks something]
+mcp_memex_recall("what stack does the user prefer?")
+→ Answer citing memory facts + documents
+
+[Session end]
+mcp_memex_observe("<full conversation text>")
+→ {"facts_extracted": 2, "memories_updated": 0}
 ```
 
 ## Notes
 
-- **Language**: query language should match the stored content language for best results
-- Memex runs at `http://memex:8000` — internal Docker network only, not exposed externally
+- **`remember` is now synchronous** — no job_id, no polling. Returns immediately.
+- **`remember` has no title/tags** — facts are extracted automatically by LLM.
+- **Language** — query language should match stored content for best results.
+- Memex runs at `http://memex:8000` — internal Docker network only.

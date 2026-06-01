@@ -11,14 +11,20 @@ class QueryContext:
 
 class ContextBuilder:
     SYSTEM = (
-        "Answer only based on the provided sources. "
-        "If the answer is not in the sources — say so explicitly. "
-        "Cite sources as [1], [2], etc."
+        "Answer based on the provided sources and personal memory facts (if any). "
+        "If the answer is not in the sources or memory — say so explicitly. "
+        "Cite document sources as [1], [2], etc. Cite memory facts as [memory]."
     )
 
-    def build(self, query: str, chunks: list[L2Chunk]) -> QueryContext:
+    def build(self, query: str, chunks: list[L2Chunk], memory_hits: list = None) -> QueryContext:
         sources_text = ""
         sources_meta = []
+
+        # Memory facts go first — highest priority
+        if memory_hits:
+            sources_text += "\nPersonal memory facts:\n---\n"
+            for hit in memory_hits[:5]:
+                sources_text += f"[memory] {hit.content}\n"
 
         for i, chunk in enumerate(chunks, start=1):
             parts = [f"[{i}]"]
