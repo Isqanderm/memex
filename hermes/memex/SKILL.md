@@ -1,17 +1,17 @@
 ---
 name: memex
-description: "Personal RAG memory system: save, search, and recall information from documents and notes."
-version: 1.2.0
-platforms: [linux]
+description: "Personal RAG memory system — save, search, and recall information across documents and notes. Use when the user wants to remember something, find stored information, index a file, list or delete memories."
+license: MIT
+compatibility: Requires Memex running at http://memex:8000 via Docker. See https://github.com/Isqanderm/memex for setup.
 metadata:
-  hermes:
-    tags: [memory, rag, knowledge-base, documents, search]
-    related_skills: []
+  author: Isqanderm
+  version: "1.0.0"
+  tags: "memory rag knowledge-base documents search"
 ---
 
 # Memex — Personal Knowledge Base
 
-Memex is a personal RAG system running at `http://memex:8000`. Use it to store, index, and semantically search documents and notes via native MCP tools.
+Memex is a personal RAG system. Use it to store, index, and semantically search documents and notes via MCP tools.
 
 ## When to Use Memex
 
@@ -21,7 +21,7 @@ Memex is a personal RAG system running at `http://memex:8000`. Use it to store, 
 - User wants to see what's stored → `mcp_memex_list_memories`
 - User wants to delete something → `mcp_memex_forget`
 
-## Native MCP Tools
+## Tools
 
 ### mcp_memex_remember — Save text as a memory
 
@@ -86,15 +86,14 @@ Arguments:
    → if "error": report to user
 ```
 
-**Do NOT tell the user "Запомнил" / "Saved" before check_indexing returns "done".**
-Skipping check_indexing leaves the document without a title and tags.
+**Do NOT confirm "Saved" before check_indexing returns "done".** Skipping check_indexing leaves the document without title and tags.
 
 ### Answer from memory
 
 ```
 1. mcp_memex_recall(query)
 2. Present the answer and cite sources
-3. If no results: try rephrasing query or say "ничего не найдено"
+3. If no results: try rephrasing or say nothing was found
 ```
 
 ### Index a file
@@ -108,9 +107,5 @@ Skipping check_indexing leaves the document without a title and tags.
 
 ## Notes
 
-- **Language**: query language should match the stored content language for best results.
-  If content was saved in Russian, search in Russian. If in English, search in English.
-- Embeddings: OpenAI `text-embedding-3-small` (multilingual but same-language performs better)
-- LLM for answers: `gpt-4o-mini`
-- Memex is NOT exposed externally — internal only at `http://memex:8000`
-- Postgres is isolated on a separate internal Docker network
+- **Language**: query language should match the stored content language for best results
+- Memex runs at `http://memex:8000` — internal Docker network only, not exposed externally

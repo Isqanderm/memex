@@ -183,7 +183,7 @@ docker exec -u hermes "$HERMES_CONTAINER" bash -c \
 step "Installing Hermes skill..."
 docker exec "$HERMES_CONTAINER" mkdir -p /opt/data/skills/memex
 docker exec "$HERMES_CONTAINER" curl -sSf \
-  "$REPO_RAW/hermes/memex-skill.md" -o /opt/data/skills/memex/SKILL.md
+  "$REPO_RAW/hermes/memex/SKILL.md" -o /opt/data/skills/memex/SKILL.md
 ok "Skill installed at /opt/data/skills/memex/SKILL.md"
 
 # ── 8. Patch config.yaml ──────────────────────────────────────────────────────

@@ -120,7 +120,7 @@ docker exec hermes-agent /opt/hermes/.venv/bin/pip install mcp httpx -q
 ```bash
 docker exec hermes-agent mkdir -p /opt/data/skills/memex
 docker exec hermes-agent curl -sSf \
-  https://raw.githubusercontent.com/Isqanderm/memex/main/hermes/memex-skill.md \
+  https://raw.githubusercontent.com/Isqanderm/memex/main/hermes/memex/SKILL.md \
   -o /opt/data/skills/memex/SKILL.md
 ```
 
