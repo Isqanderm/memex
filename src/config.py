@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Literal
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,18 +8,18 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # OpenAI Embeddings
+    # OpenAI Embeddings (always required — used regardless of LLM provider)
     openai_api_key: str
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
 
-    # LLM
-    llm_provider: Literal["claude", "openai"] = "claude"
-    llm_model: str = "claude-opus-4-7"
-    llm_max_tokens: int = 2048
-    llm_temperature: float = 0.1
-    anthropic_api_key: str | None = None
-    openai_llm_api_key: str | None = None
+    # LLM — both fields are required, no defaults
+    llm_provider: Literal["claude", "openai"]
+    llm_model: str
+
+    # LLM credentials — one must be set depending on llm_provider
+    anthropic_api_key: str | None = None   # required when llm_provider=claude
+    openai_llm_api_key: str | None = None  # required when llm_provider=openai
 
     # Chunking
     l2_chunk_size: int = 512
@@ -35,6 +36,18 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("data/uploads")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="after")
+    def validate_llm_credentials(self) -> "Settings":
+        if self.llm_provider == "claude" and not self.anthropic_api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is required when LLM_PROVIDER=claude"
+            )
+        if self.llm_provider == "openai" and not self.openai_llm_api_key:
+            raise ValueError(
+                "OPENAI_LLM_API_KEY is required when LLM_PROVIDER=openai"
+            )
+        return self
 
 
 _settings: Settings | None = None
