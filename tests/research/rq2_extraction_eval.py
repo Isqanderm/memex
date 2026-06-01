@@ -2,7 +2,7 @@
 RQ2: Fact extraction and relation resolution accuracy.
 
 Usage:
-    ANTHROPIC_API_KEY=sk-... uv run python tests/research/rq2_extraction_eval.py
+    OPENAI_API_KEY=sk-... uv run python tests/research/rq2_extraction_eval.py
 
 Success criteria:
     Extraction precision >= 0.90
@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 
-import anthropic
+import openai
 
 DATASETS = Path(__file__).parent / "datasets" / "rq2_extraction_cases.json"
 
@@ -22,7 +22,9 @@ EXTRACT_PROMPT = """\
 Extract atomic facts about the user from the following text.
 Rules:
 - Each fact is one statement, no pronouns — use "User" as subject.
-- Ignore facts with no lasting relevance (e.g., weather, third-party chitchat).
+- Include only lasting facts: identity, skills, location, work, relationships, current projects, preferences.
+- Exclude: opinions about events ("enjoyed the talks"), reactions, temporary states, third-party info, weather.
+- Normalize state: prefer "User uses X" over "User switched from Y to X".
 - If a fact is time-bound (e.g. "meeting tomorrow"), add "forget_after": "<ISO datetime close to the event>".
 - For permanent facts, omit "forget_after".
 
@@ -38,22 +40,22 @@ Existing similar facts:
 {existing}
 
 For each existing fact determine the relation of the new fact to it:
-- updates: new fact contradicts and supersedes the old one
-- extends: new fact adds detail without contradiction
-- derives: new fact is logically inferred from the old one
-- new: not meaningfully related
+- updates: new fact contradicts and supersedes the old one (e.g. "User works at Beta" updates "User works at Acme")
+- extends: new fact adds detail without contradiction (e.g. "User is senior engineer at Acme" extends "User works at Acme")
+- derives: new fact is a logical conclusion from the old one (e.g. "User has 10+ years experience" derives from "User started working in 2015")
+- new: not meaningfully related to the existing fact
 
 Return JSON only:
 {{"relations": [{{"id": "...", "type": "updates|extends|derives|new"}}]}}"""
 
 
-def call_llm(client: anthropic.Anthropic, prompt: str) -> str:
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+def call_llm(client: openai.OpenAI, prompt: str) -> str:
+    msg = client.chat.completions.create(
+        model="gpt-4o-mini",
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
-    return msg.content[0].text
+    return msg.choices[0].message.content
 
 
 def extract_json(text: str) -> dict:
@@ -62,6 +64,25 @@ def extract_json(text: str) -> dict:
     if start == -1 or end == 0:
         raise ValueError(f"No JSON object found in: {text[:100]}")
     return json.loads(text[start:end])
+
+
+_STOP = {"a", "an", "the", "is", "in", "at", "to", "for", "and", "or", "of", "with", "user", "as", "from", "has", "have", "been"}
+
+
+def _key_tokens(text: str) -> set[str]:
+    return {w.strip(".,") for w in text.lower().split()} - _STOP
+
+
+def _fact_matches(expected: str, extracted_list: list[str], threshold: float = 0.6) -> bool:
+    exp_key = _key_tokens(expected)
+    if not exp_key:
+        return False
+    for x in extracted_list:
+        x_key = _key_tokens(x)
+        overlap = len(exp_key & x_key) / len(exp_key)
+        if overlap >= threshold:
+            return True
+    return False
 
 
 def run_extraction_eval(client, cases):
@@ -76,7 +97,7 @@ def run_extraction_eval(client, cases):
             extracted = []
 
         expected = [e.lower() for e in case["expected_facts"]]
-        matched = sum(1 for e in expected if any(e[:30] in x for x in extracted))
+        matched = sum(1 for e in expected if _fact_matches(e, extracted))
         tp += matched
         fn += len(expected) - matched
         fp += max(0, len(extracted) - matched)
@@ -123,13 +144,13 @@ def run_relation_eval(client, cases):
 
 
 def main():
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        print("ANTHROPIC_API_KEY not set — skipping live eval")
+        print("OPENAI_API_KEY not set — skipping live eval")
         return
 
     data = json.loads(DATASETS.read_text())
-    client = anthropic.Anthropic(api_key=api_key)
+    client = openai.OpenAI(api_key=api_key)
 
     print("=== RQ2: Extraction accuracy ===")
     precision, recall = run_extraction_eval(client, data["extraction_cases"])

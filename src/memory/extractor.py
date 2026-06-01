@@ -8,7 +8,9 @@ EXTRACT_PROMPT = """\
 Extract atomic facts about the user from the following text.
 Rules:
 - Each fact is one statement, no pronouns — use "User" as subject.
-- Ignore facts with no lasting relevance (weather, third-party chitchat).
+- Include only lasting facts: identity, skills, location, work, relationships, current projects, preferences.
+- Exclude: opinions about events ("enjoyed the talks"), reactions, temporary states, third-party info, weather.
+- Normalize state: prefer "User uses X" over "User switched from Y to X".
 - If a fact is time-bound (e.g. "meeting tomorrow"), add "forget_after" as an ISO datetime.
 - For permanent facts, omit "forget_after".
 
@@ -24,10 +26,10 @@ Existing similar facts:
 {existing}
 
 For each existing fact determine the relation of the new fact to it:
-- updates: new fact contradicts and supersedes the old one
-- extends: new fact adds detail without contradiction
-- derives: new fact is logically inferred from the old one
-- new: not meaningfully related
+- updates: new fact contradicts and supersedes the old one (e.g. "User works at Beta" updates "User works at Acme")
+- extends: new fact adds detail without contradiction (e.g. "User is senior engineer at Acme" extends "User works at Acme")
+- derives: new fact is a logical conclusion from the old one (e.g. "User has 10+ years experience" derives from "User started working in 2015")
+- new: not meaningfully related to the existing fact
 
 Return JSON only:
 {{"relations": [{{"id": "...", "type": "updates|extends|derives|new"}}]}}"""
