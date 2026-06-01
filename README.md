@@ -77,6 +77,10 @@ Add to `.claude/settings.json`:
 
 Available tools: `add_document`, `query`, `find_related`, `recall_related`.
 
+## Hermes Integration
+
+Use Memex as persistent memory for a [Hermes](https://github.com/your-hermes-repo) agent — full setup guide: [`docs/hermes.md`](docs/hermes.md).
+
 ## Architecture
 
 ```

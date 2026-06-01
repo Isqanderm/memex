@@ -1,0 +1,28 @@
+# Hermes integration overlay.
+# Usage:
+#   HERMES_NETWORK=<your_hermes_network> \
+#     docker compose -f docker-compose.yml -f docker-compose.hermes.yml up -d
+#
+# Find your Hermes network name:
+#   docker network ls | grep hermes
+#
+# Requires Docker Compose 2.24+ (for !reset tag).
+
+services:
+  memex:
+    ports: !reset []
+    networks:
+      - hermes-net
+      - internal
+
+  postgres:
+    ports: !reset []
+    networks:
+      - internal
+
+networks:
+  hermes-net:
+    external: true
+    name: "${HERMES_NETWORK:-hermes_default}"
+  internal:
+    internal: true

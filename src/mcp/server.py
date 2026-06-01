@@ -21,8 +21,7 @@ MCP Server для Memex — персистентная память для AI-а
 }
 """
 import asyncio
-import json
-import uuid
+import os
 import tempfile
 from pathlib import Path
 
@@ -31,7 +30,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp import types
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.getenv("MEMEX_URL", "http://localhost:8000")
 server = Server("memex")
 
 # In-memory cache: job_id → {title, tags} — used to set metadata after async indexing
