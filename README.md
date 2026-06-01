@@ -64,7 +64,13 @@ Available tools: `remember`, `recall`, `index_file`, `check_indexing`, `list_mem
 
 ## Hermes Integration
 
-Use Memex as persistent memory for a Hermes agent — full setup guide: [`docs/hermes.md`](docs/hermes.md).
+Use Memex as persistent memory for a Hermes agent.
+
+```bash
+OPENAI_API_KEY=sk-... bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh)
+```
+
+Auto-detects your Hermes container and network, starts Memex, installs the MCP bridge and skill, patches `config.yaml`, and restarts Hermes. Manual setup: [`docs/hermes.md`](docs/hermes.md).
 
 ## Architecture
 
