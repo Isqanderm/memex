@@ -1,15 +1,23 @@
 #!/bin/bash
 # Memex × Hermes one-command installer
-# Usage:
-#   OPENAI_API_KEY=sk-... bash install-hermes.sh
-#   or:
-#   bash install-hermes.sh  (will prompt for key)
+#
+# Option A (recommended):
+#   curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh -o install-hermes.sh
+#   bash install-hermes.sh
+#
+# Option B (one-liner):
+#   OPENAI_API_KEY=sk-... bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh)
 
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/Isqanderm/memex/main"
+
+# ── Overridable env vars ──────────────────────────────────────────────────────
+HERMES_CONTAINER="${HERMES_CONTAINER:-}"        # override container auto-detect
+HERMES_NETWORK="${HERMES_NETWORK:-}"            # override network auto-detect
 INSTALL_DIR="${MEMEX_INSTALL_DIR:-/docker/memex}"
 
+# ── Colours ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}⚠${NC}  $*"; }
@@ -20,58 +28,117 @@ echo "╔═══════════════════════�
 echo "║     Memex × Hermes Installer         ║"
 echo "╚══════════════════════════════════════╝"
 
-# ── 1. OpenAI API key ──────────────────────────────────────────────────────
+# ── 0. Dependency checks ──────────────────────────────────────────────────────
+step "Checking dependencies..."
+
+# Docker daemon
+if ! docker info >/dev/null 2>&1; then
+  die "Docker is not running or not accessible. Start Docker and try again."
+fi
+ok "Docker is running"
+
+# Docker Compose 2.24+
+if ! docker compose version >/dev/null 2>&1; then
+  die "Docker Compose v2 not found. Install it and try again."
+fi
+COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+COMPOSE_MAJOR=$(echo "$COMPOSE_VERSION" | cut -d. -f1)
+COMPOSE_MINOR=$(echo "$COMPOSE_VERSION" | cut -d. -f2)
+if [ "$COMPOSE_MAJOR" -lt 2 ] || { [ "$COMPOSE_MAJOR" -eq 2 ] && [ "$COMPOSE_MINOR" -lt 24 ]; }; then
+  die "Docker Compose 2.24+ required (found $COMPOSE_VERSION). Please upgrade."
+fi
+ok "Docker Compose $COMPOSE_VERSION"
+
+# curl
+if ! command -v curl >/dev/null 2>&1; then
+  die "curl is required but not installed. Install it and try again."
+fi
+ok "curl available"
+
+# ── 1. OpenAI API key ─────────────────────────────────────────────────────────
 if [ -z "${OPENAI_API_KEY:-}" ]; then
   read -rsp "OpenAI API key (required for embeddings): " OPENAI_API_KEY
   echo
 fi
 [ -z "${OPENAI_API_KEY:-}" ] && die "OPENAI_API_KEY is required (used for embeddings even if LLM_PROVIDER=claude)"
 
-# ── 2. Auto-detect Hermes ─────────────────────────────────────────────────
+# ── 2. Auto-detect Hermes ─────────────────────────────────────────────────────
 step "Detecting Hermes..."
-HERMES_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E 'hermes.?agent' | head -1 || true)
-[ -z "$HERMES_CONTAINER" ] && die "hermes-agent container not found. Is Hermes running? (docker ps)"
+
+if [ -z "$HERMES_CONTAINER" ]; then
+  # Try patterns in order of specificity
+  HERMES_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^hermes-agent$' | head -1 || true)
+  if [ -z "$HERMES_CONTAINER" ]; then
+    HERMES_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^hermes_agent$' | head -1 || true)
+  fi
+  if [ -z "$HERMES_CONTAINER" ]; then
+    HERMES_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i 'hermes' | head -1 || true)
+  fi
+  if [ -z "$HERMES_CONTAINER" ]; then
+    die "No Hermes container found. Is Hermes running? (docker ps)\nHint: set HERMES_CONTAINER=<name> to override."
+  fi
+fi
 ok "Container: $HERMES_CONTAINER"
 
-HERMES_NETWORK=$(docker inspect "$HERMES_CONTAINER" \
-  --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' \
-  | tr ' ' '\n' | grep -v '^$' | head -1)
-[ -z "$HERMES_NETWORK" ] && die "Could not detect Hermes Docker network"
+# Verify the container actually exists and is running
+if ! docker inspect --format '{{.State.Running}}' "$HERMES_CONTAINER" 2>/dev/null | grep -q 'true'; then
+  die "Container '$HERMES_CONTAINER' is not running. Start Hermes first."
+fi
+
+if [ -z "$HERMES_NETWORK" ]; then
+  # Prefer a network with "hermes" in the name; fall back to first available
+  ALL_NETWORKS=$(docker inspect "$HERMES_CONTAINER" \
+    --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' \
+    | tr ' ' '\n' | grep -v '^$' || true)
+  HERMES_NETWORK=$(echo "$ALL_NETWORKS" | grep -i 'hermes' | head -1 || true)
+  if [ -z "$HERMES_NETWORK" ]; then
+    HERMES_NETWORK=$(echo "$ALL_NETWORKS" | head -1 || true)
+  fi
+  if [ -z "$HERMES_NETWORK" ]; then
+    die "Could not detect Hermes Docker network.\nHint: set HERMES_NETWORK=<name> to override."
+  fi
+fi
 ok "Network: $HERMES_NETWORK"
 
 HERMES_CONFIG=$(docker exec "$HERMES_CONTAINER" \
   bash -c 'echo "${HERMES_CONFIG_FILE:-/opt/data/config.yaml}"' 2>/dev/null || echo "/opt/data/config.yaml")
 ok "Config: $HERMES_CONFIG"
 
-# ── 3. Check mcp + httpx in Hermes venv ──────────────────────────────────
+# ── 3. Check mcp + httpx in Hermes venv ──────────────────────────────────────
 step "Checking Hermes Python environment..."
 HERMES_PYTHON="/opt/hermes/.venv/bin/python3"
-docker exec "$HERMES_CONTAINER" "$HERMES_PYTHON" -c "import mcp, httpx" 2>/dev/null \
-  && ok "mcp + httpx available" \
-  || die "mcp or httpx not found in $HERMES_PYTHON. Run: docker exec $HERMES_CONTAINER pip install mcp httpx"
+HERMES_PIP="/opt/hermes/.venv/bin/pip"
 
-# ── 4. Prepare install dir ────────────────────────────────────────────────
+if ! docker exec "$HERMES_CONTAINER" "$HERMES_PYTHON" -c "import mcp, httpx" 2>/dev/null; then
+  warn "mcp or httpx not found in Hermes venv — installing..."
+  if ! docker exec "$HERMES_CONTAINER" "$HERMES_PIP" install mcp httpx -q; then
+    die "Failed to install mcp/httpx. Run manually:\n  docker exec $HERMES_CONTAINER $HERMES_PIP install mcp httpx"
+  fi
+  # Re-verify
+  docker exec "$HERMES_CONTAINER" "$HERMES_PYTHON" -c "import mcp, httpx" 2>/dev/null \
+    || die "mcp/httpx still not importable after install. Check the Hermes venv."
+fi
+ok "mcp + httpx available"
+
+# ── 4. Prepare install dir ────────────────────────────────────────────────────
 step "Setting up Memex in $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# Skip if already installed
 if docker ps --format '{{.Names}}' | grep -q '^memex$'; then
   warn "Container 'memex' already running — skipping compose up"
 else
-  # Download compose files
-  curl -sSf "$REPO_RAW/docker-compose.prod.yml"     -o docker-compose.prod.yml
-  curl -sSf "$REPO_RAW/docker-compose.hermes.yml"   -o docker-compose.hermes.yml
+  curl -sSf "$REPO_RAW/docker-compose.prod.yml"   -o docker-compose.prod.yml
+  curl -sSf "$REPO_RAW/docker-compose.hermes.yml" -o docker-compose.hermes.yml
   ok "Compose files downloaded"
 
-  # Generate .env if missing
   if [ ! -f .env ]; then
     POSTGRES_PASSWORD=$(openssl rand -hex 16)
     cat > .env <<EOF
 OPENAI_API_KEY=${OPENAI_API_KEY}
 OPENAI_LLM_API_KEY=${OPENAI_API_KEY}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-DATABASE_URL=postgresql+asyncpg://memex:${POSTGRES_PASSWORD}@postgres:5432/memex
+DATABASE_URL=postgresql+asyncpg://memex:${POSTGRES_PASSWORD}@memex-db:5432/memex
 LLM_PROVIDER=openai
 LLM_MODEL=gpt-4o-mini
 UPLOAD_DIR=data/uploads
@@ -82,7 +149,6 @@ EOF
     ok ".env already exists — skipping"
   fi
 
-  # Start Memex
   step "Starting Memex containers..."
   HERMES_NETWORK="$HERMES_NETWORK" docker compose \
     -f docker-compose.prod.yml \
@@ -91,7 +157,7 @@ EOF
   ok "Containers started"
 fi
 
-# ── 5. Wait for Memex to be ready ────────────────────────────────────────
+# ── 5. Wait for Memex to be ready ────────────────────────────────────────────
 step "Waiting for Memex to be ready..."
 for i in $(seq 1 30); do
   if docker exec "$HERMES_CONTAINER" curl -sf http://memex:8000/api/documents >/dev/null 2>&1; then
@@ -102,62 +168,69 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-# ── 6. Install MCP bridge ─────────────────────────────────────────────────
+# ── 6. Install MCP bridge ─────────────────────────────────────────────────────
 step "Installing MCP bridge..."
 docker exec "$HERMES_CONTAINER" curl -sSf \
   "$REPO_RAW/hermes/memex-bridge.py" -o /opt/data/memex-bridge.py
 ok "Bridge installed at /opt/data/memex-bridge.py"
 
-# Test it
 docker exec -u hermes "$HERMES_CONTAINER" bash -c \
   'printf "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}}\n" \
    | /opt/hermes/.venv/bin/python3 /opt/data/memex-bridge.py 2>/dev/null' \
   | grep -q '"name":"memex"' && ok "MCP handshake OK" || die "MCP bridge test failed. Check /opt/data/memex-bridge.py"
 
-# ── 7. Install skill ──────────────────────────────────────────────────────
+# ── 7. Install skill ──────────────────────────────────────────────────────────
 step "Installing Hermes skill..."
 docker exec "$HERMES_CONTAINER" mkdir -p /opt/data/skills/memex
 docker exec "$HERMES_CONTAINER" curl -sSf \
   "$REPO_RAW/hermes/memex-skill.md" -o /opt/data/skills/memex/SKILL.md
 ok "Skill installed at /opt/data/skills/memex/SKILL.md"
 
-# ── 8. Patch config.yaml ──────────────────────────────────────────────────
+# ── 8. Patch config.yaml ──────────────────────────────────────────────────────
 step "Updating Hermes config ($HERMES_CONFIG)..."
-docker exec "$HERMES_CONTAINER" "$HERMES_PYTHON" - "$HERMES_CONFIG" <<'PYEOF'
+
+print_manual_config() {
+  warn "$1 Add the following to $HERMES_CONFIG manually:"
+  printf '\n  mcp_servers:\n    memex:\n      command: /opt/hermes/.venv/bin/python3\n      args: [/opt/data/memex-bridge.py]\n      env:\n        MEMEX_URL: http://memex:8000\n      timeout: 120\n      connect_timeout: 60\n\n'
+}
+
+if ! docker exec "$HERMES_CONTAINER" "$HERMES_PYTHON" -c "import yaml" 2>/dev/null; then
+  print_manual_config "PyYAML not found in Hermes venv — skipping automatic config patch."
+elif ! docker exec "$HERMES_CONTAINER" "$HERMES_PYTHON" - "$HERMES_CONFIG" <<'PYEOF' 2>/dev/null; then
 import sys, yaml
-
 path = sys.argv[1]
-with open(path) as f:
-    config = yaml.safe_load(f) or {}
-
-if 'mcp_servers' not in config:
-    config['mcp_servers'] = {}
-
-if 'memex' in config['mcp_servers']:
-    print("memex already in config — skipping")
-    sys.exit(0)
-
-config['mcp_servers']['memex'] = {
+try:
+    cfg = yaml.safe_load(open(path)) or {}
+except Exception as e:
+    print(f"ERROR reading config: {e}", file=sys.stderr); sys.exit(1)
+if 'mcp_servers' not in cfg:
+    cfg['mcp_servers'] = {}
+if 'memex' in cfg['mcp_servers']:
+    print("memex already in config — skipping"); sys.exit(0)
+cfg['mcp_servers']['memex'] = {
     'command': '/opt/hermes/.venv/bin/python3',
     'args': ['/opt/data/memex-bridge.py'],
     'env': {'MEMEX_URL': 'http://memex:8000'},
-    'timeout': 120,
-    'connect_timeout': 60,
+    'timeout': 120, 'connect_timeout': 60,
 }
-
-with open(path, 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-print("config.yaml updated")
+try:
+    yaml.dump(cfg, open(path,'w'), default_flow_style=False, allow_unicode=True, sort_keys=False)
+    print("config.yaml updated")
+except Exception as e:
+    print(f"ERROR writing config: {e}", file=sys.stderr); sys.exit(1)
 PYEOF
-ok "config.yaml patched"
+  print_manual_config "Automatic config patch failed."
+else
+  ok "config.yaml patched"
+fi
 
-# ── 9. Restart Hermes ─────────────────────────────────────────────────────
+# ── 9. Restart Hermes ─────────────────────────────────────────────────────────
 step "Restarting Hermes..."
 docker restart "$HERMES_CONTAINER" >/dev/null
 ok "Hermes restarting..."
 sleep 20
 
-# ── 10. Verify ────────────────────────────────────────────────────────────
+# ── 10. Verify ────────────────────────────────────────────────────────────────
 step "Verifying installation..."
 API_KEY=$(docker exec "$HERMES_CONTAINER" env 2>/dev/null | grep API_SERVER_KEY | cut -d= -f2 || true)
 
