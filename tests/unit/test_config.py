@@ -27,7 +27,7 @@ def test_settings_claude_provider():
 
 def test_settings_defaults_unchanged():
     s = Settings(_env_file=None, **_base(llm_provider="openai", llm_model="gpt-4o-mini", openai_llm_api_key="sk-llm"))
-    assert s.embedding_model == "text-embedding-3-small"
+    assert s.local_embedding_model == "intfloat/multilingual-e5-small"
     assert s.l2_chunk_size == 512
     assert s.l1_chunk_size == 128
     assert s.rrf_k == 60

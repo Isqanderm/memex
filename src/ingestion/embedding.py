@@ -1,17 +1,6 @@
 from src.models.chunk import ChunkData
 
 
-class OpenAIEmbeddingClient:
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
-        import openai
-        self._client = openai.AsyncOpenAI(api_key=api_key)
-        self.model = model
-
-    async def embed_batch(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
-        response = await self._client.embeddings.create(input=texts, model=self.model)
-        return [item.embedding for item in response.data]
-
-
 class LocalEmbeddingClient:
     """Local sentence-transformers embedding — no API calls, no cost.
 
