@@ -284,6 +284,112 @@ WHERE forget_after < NOW() AND is_active = TRUE;
 
 ---
 
+## R&D Plan
+
+Before committing to full implementation, three research questions need empirical answers. Each experiment is independent and can run in parallel.
+
+---
+
+### RQ1: Does the memory layer actually improve answer quality?
+
+**Hypothesis:** `recall()` with memory augmentation gives more accurate and up-to-date answers than pure document RAG on personal/evolving facts.
+
+**Method:**
+1. Build an eval dataset of 50–100 synthetic conversation turns where the user states facts about themselves (job, location, preferences, projects). Include knowledge updates — contradicting facts stated at different points in time.
+2. After ingestion, run the same set of questions through two systems:
+   - **Baseline:** current Memex `recall()` (chunks only)
+   - **Memory:** new `recall()` (memories + chunks, RRF-merged)
+3. Score answers using LLM-as-judge with the same prompt Supermemory uses in their LongMemEval evaluation.
+
+**Metrics:**
+- Answer accuracy per category: single-session, multi-session, knowledge-update, temporal-reasoning, preference
+- Overall accuracy delta vs baseline
+
+**Success criterion:** Memory layer improves overall accuracy by ≥10 percentage points vs baseline. Knowledge-update category specifically must improve (this is where pure RAG is weakest).
+
+**Estimated effort:** 2–3 days (dataset creation + eval harness + one run).
+
+---
+
+### RQ2: How accurately does the LLM engine extract facts and resolve relations?
+
+**Hypothesis:** The extraction and relation-resolution prompts work correctly on realistic personal-knowledge inputs.
+
+**Method:**
+1. Build a labeled dataset of 30–50 input texts (explicit `remember()` calls, short conversation excerpts, brief document excerpts). For each, manually annotate:
+   - Expected extracted facts (ground truth)
+   - For pairs of conflicting/related facts: expected relation type (`updates` / `extends` / `derives` / `new`)
+2. Run the extraction prompt over all inputs, compare to ground truth.
+3. Run the relation prompt over all labeled fact pairs, compare to ground truth.
+
+**Metrics:**
+- Fact extraction: precision (no hallucinated facts), recall (no missed facts), F1
+- Relation classification: accuracy per relation type, confusion matrix
+
+**Success criterion:**
+- Extraction precision ≥ 0.90 (hallucinations are worse than missed facts)
+- Extraction recall ≥ 0.80
+- Relation accuracy ≥ 0.85, specifically `updates` recall ≥ 0.90 (missing an update means stale facts survive)
+
+**Estimated effort:** 1–2 days (labeling + eval script).
+
+---
+
+### RQ3: What is the cost and latency of the memory layer?
+
+**Hypothesis:** The LLM overhead per `remember()` and the latency added to `recall()` are acceptable for a personal tool.
+
+**Method:**
+1. Instrument the `remember()` flow: measure tokens (input + output) for extraction call and resolution call separately. Run over 50 realistic inputs covering short facts, long paragraphs, and conversation excerpts.
+2. Measure end-to-end latency for `recall()` with and without memory search, at varying memory store sizes (10 / 100 / 500 facts).
+3. Measure `context()` latency (profile generation) at the same sizes.
+
+**Metrics:**
+- Average tokens per `remember()`: extraction call + resolution call
+- Estimated cost per `remember()` at current Claude pricing
+- `recall()` latency delta: with memory vs without, p50 and p95
+- `context()` latency at 10 / 100 / 500 facts
+
+**Success criterion:**
+- `remember()` costs < $0.01 per call on average (acceptable for personal use)
+- `recall()` latency increase < 200ms p95 vs baseline
+- `context()` completes in < 2s at 500 facts
+
+**Estimated effort:** 1 day (instrumentation + benchmark script).
+
+---
+
+### Research infrastructure
+
+All three experiments share:
+
+```
+tests/research/
+    datasets/
+        rq1_eval_conversations.json   # labeled Q&A eval set
+        rq2_extraction_cases.json     # labeled fact extraction cases
+        rq2_relation_cases.json       # labeled relation pairs
+    rq1_eval.py                       # answer quality benchmark
+    rq2_extraction_eval.py            # extraction + relation accuracy
+    rq3_benchmark.py                  # cost + latency measurement
+    results/                          # output JSON reports (gitignored)
+```
+
+Results should be written as JSON reports so they can be re-run and compared across prompt iterations.
+
+---
+
+### Decision gate
+
+R&D runs **before** implementing the full ingestion pipeline and MCP changes. The implementation proceeds only if:
+- RQ1 shows meaningful quality improvement (otherwise the layer adds cost with no benefit)
+- RQ2 shows extraction precision ≥ 0.90 (otherwise prompt iteration is needed first)
+- RQ3 confirms cost and latency are within the success criteria
+
+If RQ2 or RQ3 fail their criteria, the prompts and/or architecture are revised before proceeding.
+
+---
+
 ## Open Questions
 
 None — all decisions were made during design review.
