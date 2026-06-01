@@ -22,3 +22,8 @@ def test_chunk_has_required_columns():
     assert "chunk_role" in cols
     assert "parent_chunk_id" in cols
     assert "language" in cols
+
+def test_memory_model_importable():
+    from src.db.models import Memory, MemoryExtractionJob
+    assert Memory.__tablename__ == "memories"
+    assert MemoryExtractionJob.__tablename__ == "memory_extraction_jobs"
