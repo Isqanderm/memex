@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.db.repositories.job_repo import JobRepository
 from src.ingestion.pipeline import IngestionPipeline
+from src.memory.worker import queue_document_extraction
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class IngestionWorker:
                 try:
                     doc_id = await self.pipeline.process(session, job.source, job.checksum)
                     await repo.mark_done(job.id, doc_id)
+                    await queue_document_extraction(session, str(doc_id))
                     logger.info(f"Job {job.id} done → doc {doc_id}")
                     return True
                 except Exception as e:

@@ -87,3 +87,15 @@ async def test_remember_extends_does_not_deactivate():
     await service.remember(AsyncMock(), "I'm a senior engineer at Acme")
 
     repo.deactivate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_memory_worker_queues_job_after_doc_indexing():
+    from src.memory.worker import queue_document_extraction
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    doc_id = uuid.uuid4()
+    await queue_document_extraction(session, str(doc_id))
+    session.add.assert_called_once()
+    session.flush.assert_called_once()
