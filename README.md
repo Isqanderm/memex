@@ -1,17 +1,45 @@
 # Memex
 
-Personal RAG system — indexes your documents and answers questions about them in natural language (EN + RU).
+**Self-hosted RAG for your documents.** Upload PDFs, DOCX, Markdown and more — ask questions in natural language, get answers with source references.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](docker-compose.prod.yml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![pgvector](https://img.shields.io/badge/pgvector-PostgreSQL-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![MCP](https://img.shields.io/badge/MCP-Claude_Code-orange)](https://docs.anthropic.com/en/docs/claude-code/mcp)
+
+![Memex demo](docs/memex-demo.gif)
+
+---
+
+## Why Memex?
+
+Most document Q&A tools are SaaS — your documents leave your machine. Memex runs entirely on your infrastructure.
+
+| Feature | Memex | privateGPT | Quivr | Danswer |
+|---|:---:|:---:|:---:|:---:|
+| Self-hosted | ✅ | ✅ | ✅ | ✅ |
+| One-command Docker install | ✅ | ❌ | ❌ | ❌ |
+| Hybrid search (semantic + BM25) | ✅ | ❌ | ❌ | ✅ |
+| Local reranker (no extra API) | ✅ | ❌ | ❌ | ❌ |
+| MCP server for Claude Code | ✅ | ❌ | ❌ | ❌ |
+| Small-to-Big chunking | ✅ | ❌ | ❌ | ❌ |
+| REST API | ✅ | ✅ | ✅ | ✅ |
+| Web UI | ✅ | ✅ | ✅ | ✅ |
+
+---
 
 ## Features
 
 - **Supported formats:** PDF, DOCX, MD, TXT, PPTX, XLSX/XLS, EPUB
-- **Hybrid search:** semantic search (pgvector) + full-text (BM25) + RRF fusion
+- **Hybrid search:** semantic (pgvector) + full-text (BM25) + RRF fusion
 - **Smart chunking:** Small-to-Big — retrieval over small chunks, LLM receives full parent context
 - **Local reranker:** cross-encoder, no extra API calls
 - **Multilingual:** EN + RU in a single corpus
-- **Async indexing:** uploads return immediately, indexing runs in the background via a PG queue
+- **Async indexing:** uploads return immediately, indexing runs in background via PG queue
 - **Configurable LLM:** Claude or GPT-4o via env variable
-- **Interfaces:** Web UI + REST API + MCP server for Claude Code
+- **Three interfaces:** Web UI + REST API + MCP server for Claude Code
 
 ## Quick start
 
