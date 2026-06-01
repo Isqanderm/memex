@@ -41,8 +41,8 @@
       ],
       "questions": [
         {
-          "q": "How many years of development experience does the user have?",
-          "expected_keyword": "10"
+          "q": "When did the user start working as a developer?",
+          "expected_keyword": "2015"
         }
       ]
     }

@@ -35,7 +35,8 @@ class MemoryService:
 
         for fact in facts:
             vector = await self.embed_fn(fact.content)
-            similar = await self.repo.get_active_by_vector(vector)
+            # 0.60 threshold for conflict candidates — calibrated for text-embedding-3-small
+            similar = await self.repo.get_active_by_vector(vector, threshold=0.60)
             existing = [(m.id, m.content) for m, _ in similar]
             relations = await self.extractor.resolve_relations(fact.content, existing)
 

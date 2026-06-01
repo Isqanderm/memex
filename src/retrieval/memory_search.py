@@ -15,8 +15,9 @@ class MemoryHit:
 
 
 class MemorySearch:
-    # Lower threshold than conflict detection (0.75) — retrieval needs broader recall
-    RETRIEVAL_THRESHOLD = 0.5
+    # Lower threshold than conflict detection (0.60) — retrieval needs broad recall
+    # text-embedding-3-small gives ~0.3-0.4 for loosely related query/fact pairs
+    RETRIEVAL_THRESHOLD = 0.30
 
     def __init__(self, repo: MemoryRepository, top_k: int = 10):
         self.repo = repo
