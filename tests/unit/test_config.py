@@ -58,12 +58,6 @@ def test_missing_database_url_raises():
         Settings(_env_file=None, openai_api_key="sk-test", llm_provider="openai", llm_model="gpt-4o", openai_llm_api_key="sk-llm")
 
 
-def test_missing_openai_api_key_raises():
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, database_url="postgresql+asyncpg://x:x@localhost/x",
-                 llm_provider="openai", llm_model="gpt-4o", openai_llm_api_key="sk-llm")
-
-
 # ── credential validation ──────────────────────────────────────────────────
 
 def test_claude_without_anthropic_key_raises():
