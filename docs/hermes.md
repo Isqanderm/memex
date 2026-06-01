@@ -8,7 +8,7 @@ Connect Memex to a running Hermes agent as a persistent memory MCP server.
 
 - [ ] Hermes agent running in Docker (`docker ps | grep hermes`)
 - [ ] Docker Compose **2.24+** — check: `docker compose version`
-- [ ] OpenAI API key — required for embeddings even if you use Claude as your LLM
+- [ ] LLM API key — OpenAI (`OPENAI_LLM_API_KEY`) or Anthropic (`ANTHROPIC_API_KEY`)
 - [ ] Internet access on the server (to pull the image from GHCR)
 
 ## Quick Install (recommended)
@@ -17,13 +17,13 @@ Connect Memex to a running Hermes agent as a persistent memory MCP server.
 # Download, inspect, then run:
 curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh -o install-hermes.sh
 cat install-hermes.sh          # inspect before running
-OPENAI_API_KEY=sk-... bash install-hermes.sh
+OPENAI_LLM_API_KEY=sk-... bash install-hermes.sh
 ```
 
 Or as a one-liner (requires bash with process substitution):
 
 ```bash
-OPENAI_API_KEY=sk-... bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh)
+OPENAI_LLM_API_KEY=sk-... bash <(curl -sSL https://raw.githubusercontent.com/Isqanderm/memex/main/install-hermes.sh)
 ```
 
 The script auto-detects your Hermes container and network, starts Memex with no external ports, installs the MCP bridge and skill, patches `config.yaml`, and restarts Hermes.
@@ -36,7 +36,7 @@ Override any value with environment variables:
 HERMES_CONTAINER=my-hermes \
 HERMES_NETWORK=my_hermes_net \
 MEMEX_INSTALL_DIR=/opt/memex \
-OPENAI_API_KEY=sk-... \
+OPENAI_LLM_API_KEY=sk-... \
 bash install-hermes.sh
 ```
 
@@ -75,10 +75,13 @@ cp .env.example .env
 
 Edit `.env` — fill in at minimum:
 ```
-OPENAI_API_KEY=sk-...
-OPENAI_LLM_API_KEY=sk-...   # same key
+OPENAI_LLM_API_KEY=sk-...
 POSTGRES_PASSWORD=<generate with: openssl rand -hex 16>
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
 ```
+
+Embeddings are local — no API key needed for them.
 
 Secure the file:
 ```bash
@@ -182,5 +185,5 @@ docker exec hermes-agent curl -s \
 | Tools not visible after restart | Stale session cache | Open a **new** chat session or use the API test above |
 | `mcp_servers` block ignored | Nested under another key | Must be at top level of `config.yaml` |
 | `!reset` syntax error in compose | Docker Compose < 2.24 | Upgrade: `docker compose version` |
-| Indexing fails, embedding error | Missing OpenAI key | `OPENAI_API_KEY` is required even when using Claude as LLM |
+| Indexing fails, LLM error | Missing LLM key | Set `OPENAI_LLM_API_KEY` (OpenAI) or `ANTHROPIC_API_KEY` (Claude) |
 | `PyYAML not found` (installer) | PyYAML missing from Hermes venv | Installer prints the YAML snippet — add it manually |
