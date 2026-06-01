@@ -9,3 +9,5 @@ dist/
 data/uploads/*
 !data/uploads/.gitkeep
 .superpowers/
+docs/superpowers/
+PIPELINE.md
