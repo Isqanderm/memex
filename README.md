@@ -1,67 +1,67 @@
 # Memex
 
-Personal RAG система — индексирует личные документы и отвечает на вопросы по ним на естественном языке (RU + EN).
+Personal RAG system — indexes your documents and answers questions about them in natural language (EN + RU).
 
-## Возможности
+## Features
 
-- **Поддерживаемые форматы:** PDF, DOCX, MD, TXT, PPTX, XLSX/XLS, EPUB
-- **Hybrid Search:** семантический поиск (pgvector) + полнотекстовый (BM25) + RRF слияние
-- **Smart chunking:** Small-to-Big — поиск по маленьким чанкам, LLM получает полный контекст
-- **Reranker:** локальный cross-encoder без API вызовов
-- **Мультиязычность:** RU + EN в одном корпусе
-- **Async indexing:** загрузка файлов не блокирует — индексация в фоне через PG очередь
-- **LLM на выбор:** Claude или GPT-4o через env переменную
-- **Интерфейсы:** Web UI + REST API + MCP сервер для Claude Code
+- **Supported formats:** PDF, DOCX, MD, TXT, PPTX, XLSX/XLS, EPUB
+- **Hybrid search:** semantic search (pgvector) + full-text (BM25) + RRF fusion
+- **Smart chunking:** Small-to-Big — retrieval over small chunks, LLM receives full parent context
+- **Local reranker:** cross-encoder, no extra API calls
+- **Multilingual:** EN + RU in a single corpus
+- **Async indexing:** uploads return immediately, indexing runs in the background via a PG queue
+- **Configurable LLM:** Claude or GPT-4o via env variable
+- **Interfaces:** Web UI + REST API + MCP server for Claude Code
 
-## Быстрый старт
+## Quick start
 
 ```bash
-# 1. Запустить PostgreSQL
+# 1. Start PostgreSQL
 docker compose up -d postgres
 
-# 2. Применить миграции
+# 2. Apply migrations
 alembic upgrade head
 
-# 3. Скопировать конфиг
+# 3. Configure
 cp .env.example .env
-# Заполнить OPENAI_API_KEY, ANTHROPIC_API_KEY
+# Fill in OPENAI_API_KEY and/or ANTHROPIC_API_KEY
 
-# 4. Запустить
+# 4. Run
 uvicorn src.main:app --reload
 # → http://localhost:8000
 ```
 
-## Или через Docker Compose
+## Or with Docker Compose (full stack)
 
 ```bash
-cp .env.example .env  # заполнить ключи
+cp .env.example .env   # fill in API keys
 docker compose up
 ```
 
-## Использование
+## Usage
 
 ### Web UI
 
-Открыть `http://localhost:8000` — форма загрузки и поиска.
+Open `http://localhost:8000` — upload documents and ask questions.
 
 ### REST API
 
 ```bash
-# Загрузить документ
+# Upload a document
 curl -F "file=@report.pdf" http://localhost:8000/api/documents
 
-# Проверить статус индексации
+# Check indexing status
 curl http://localhost:8000/api/jobs/{job_id}
 
-# Задать вопрос
+# Ask a question
 curl -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
-  -d '{"query": "о чём этот документ?"}'
+  -d '{"query": "what is this document about?"}'
 ```
 
 ### MCP (Claude Code)
 
-Добавить в `.claude/settings.json`:
+Add to `.claude/settings.json`:
 
 ```json
 {
@@ -75,31 +75,35 @@ curl -X POST http://localhost:8000/api/query \
 }
 ```
 
-Инструменты: `add_document`, `query`.
+Available tools: `add_document`, `query`, `find_related`, `recall_related`.
 
-## Архитектура
+## Architecture
 
 ```
 Ingestion:  Source → Adapter → ParsedDocument → Chunker (L2+L1) → Embed → PostgreSQL
 Retrieval:  Query → Semantic + BM25 → RRF → Expand L2 → Reranker → LLM → Answer
 ```
 
-Подробно: [`docs/architecture/AGENTS.md`](docs/architecture/AGENTS.md) — архитектурный контракт для разработчиков и LLM-инструментов.
+Details: [`docs/architecture/AGENTS.md`](docs/architecture/AGENTS.md) — architectural contract for developers and LLM tools.
 
-ADR: [`docs/architecture/adr/`](docs/architecture/adr/) — 13 принятых архитектурных решений.
+ADRs: [`docs/architecture/adr/`](docs/architecture/adr/) — 15 accepted architecture decision records.
 
-## Разработка
+## Development
 
 ```bash
 pip install -e ".[dev]"
 
-# Unit тесты (без Docker)
+# Unit tests (no Docker required)
 pytest tests/unit/ -v
 
-# Интеграционные тесты (нужен Docker)
+# Integration tests (requires Docker)
 pytest tests/integration/ -v -m integration
 ```
 
-## Стек
+## Stack
 
 Python 3.12 · FastAPI · SQLAlchemy 2.0 async · PostgreSQL 15 + pgvector · Alembic · OpenAI Embeddings · sentence-transformers · Anthropic / OpenAI · Jinja2 + HTMX · MCP
+
+## License
+
+MIT — see [LICENSE](LICENSE).
