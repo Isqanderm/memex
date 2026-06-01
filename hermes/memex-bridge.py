@@ -13,11 +13,11 @@ Add to ~/.hermes/config.yaml:
       env:
         MEMEX_URL: http://memex:8000
 
-Tools: remember, recall, index_file, check_indexing, list_memories, forget
+Tools: context, remember, recall, observe, memories,
+       index_file, check_indexing, list_memories, forget
 """
 import asyncio
 import os
-import tempfile
 from pathlib import Path
 
 import httpx
@@ -28,28 +28,28 @@ from mcp import types
 BASE_URL = os.getenv("MEMEX_URL", "http://memex:8000")
 server = Server("memex")
 
-_pending_metadata: dict[str, dict] = {}
-
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
         types.Tool(
+            name="context",
+            description=(
+                "Get the user's current profile (stable facts + recent activity). "
+                "Call this as the FIRST tool at the start of every session."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
             name="remember",
             description=(
-                "Save text as a memory in long-term storage. "
-                "Indexing is async — use check_indexing(job_id) to confirm the memory is searchable."
+                "Save text as a memory. Extracts atomic facts via LLM, resolves conflicts "
+                "with existing memories automatically. Returns immediately — no polling needed."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "content": {"type": "string", "description": "Text to remember"},
-                    "title": {"type": "string", "description": "Short label (optional)"},
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Classification tags, e.g. ['meeting', 'client']",
-                    },
                 },
                 "required": ["content"],
             },
@@ -57,9 +57,8 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="recall",
             description=(
-                "Find relevant memories by query. "
-                "raw=false (default) — LLM synthesises an answer. "
-                "raw=true — returns raw chunks, faster and cheaper."
+                "Search memories and documents by query. "
+                "raw=false (default) — LLM answer. raw=true — raw chunks, faster/cheaper."
             ),
             inputSchema={
                 "type": "object",
@@ -78,6 +77,28 @@ async def list_tools() -> list[types.Tool]:
                 },
                 "required": ["query"],
             },
+        ),
+        types.Tool(
+            name="observe",
+            description=(
+                "Extract facts from a conversation and save to memory. "
+                "Call this as the LAST tool at the end of every session."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "conversation": {
+                        "type": "string",
+                        "description": "Full conversation history as text",
+                    },
+                },
+                "required": ["conversation"],
+            },
+        ),
+        types.Tool(
+            name="memories",
+            description="List all active memory facts about the user with content, source, and timestamps.",
+            inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="index_file",
@@ -100,13 +121,13 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="check_indexing",
-            description="Check indexing status. Returns: pending / processing / done / error.",
+            description="Check file indexing status. Returns: pending / processing / done / error.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "job_id": {
                         "type": "string",
-                        "description": "job_id returned by remember() or index_file()",
+                        "description": "job_id returned by index_file()",
                     },
                 },
                 "required": ["job_id"],
@@ -114,18 +135,18 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="list_memories",
-            description="List all documents in the knowledge base: id, title, tags, date.",
+            description="List all indexed documents in the knowledge base: id, title, tags, date.",
             inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="forget",
-            description="Delete a memory by doc_id.",
+            description="Delete a memory fact or document by id.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "doc_id": {
                         "type": "string",
-                        "description": "Document ID (from list_memories or recall)",
+                        "description": "Memory id (from memories) or document id (from list_memories)",
                     },
                 },
                 "required": ["doc_id"],
@@ -137,10 +158,16 @@ async def list_tools() -> list[types.Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     async with httpx.AsyncClient(timeout=60.0) as client:
-        if name == "remember":
+        if name == "context":
+            return await _context(client)
+        elif name == "remember":
             return await _remember(client, arguments)
         elif name == "recall":
             return await _recall(client, arguments)
+        elif name == "observe":
+            return await _observe(client, arguments)
+        elif name == "memories":
+            return await _memories(client)
         elif name == "index_file":
             return await _index_file(client, arguments)
         elif name == "check_indexing":
@@ -156,42 +183,35 @@ def _text(s: str) -> list[types.TextContent]:
     return [types.TextContent(type="text", text=s)]
 
 
+async def _context(client: httpx.AsyncClient) -> list[types.TextContent]:
+    resp = await client.get(f"{BASE_URL}/api/memory/context")
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    data = resp.json()
+    lines = []
+    if data.get("static"):
+        lines.append(f"User profile: {data['static']}")
+    if data.get("dynamic"):
+        lines.append(f"Recent context: {data['dynamic']}")
+    if not lines:
+        lines.append("No memories yet.")
+    lines.append(f"(Total facts: {data.get('raw_count', 0)})")
+    return _text("\n".join(lines))
+
+
 async def _remember(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     content = args["content"]
-    title = args.get("title") or content[:60].replace("\n", " ")
-    tags = args.get("tags", [])
-    safe_title = "".join(c if c.isalnum() or c in "-_ " else "_" for c in title)[:80]
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=f"-{safe_title}.txt", delete=False, encoding="utf-8") as f:
-        f.write(content)
-        tmp_path = f.name
-
-    try:
-        with open(tmp_path, "rb") as f:
-            resp = await client.post(
-                f"{BASE_URL}/api/documents",
-                files={"file": (f"{safe_title}.txt", f, "text/plain")},
-            )
-        resp.raise_for_status()
-        data = resp.json()
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
-
-    status = data.get("status")
-    job_id = data.get("job_id")
-    doc_id = data.get("doc_id")
-
-    if status == "already_indexed":
-        return _text(f"Already indexed (doc_id: {doc_id})")
-
-    if status in ("pending", "already_queued") and job_id:
-        _pending_metadata[job_id] = {"title": title, "tags": tags}
-        return _text(
-            f"Queued for indexing.\njob_id: {job_id}\n"
-            f"Use check_indexing('{job_id}') to confirm the memory is ready."
-        )
-
-    return _text(f"Unexpected response: {data}")
+    resp = await client.post(
+        f"{BASE_URL}/api/memory/remember",
+        json={"content": content, "source": "explicit"},
+    )
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    data = resp.json()
+    return _text(
+        f"Remembered. Facts extracted: {data['facts_extracted']}, "
+        f"memories updated: {data['memories_updated']}"
+    )
 
 
 async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
@@ -235,6 +255,36 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
     return _text(answer)
 
 
+async def _observe(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+    conversation = args["conversation"]
+    resp = await client.post(
+        f"{BASE_URL}/api/memory/observe",
+        json={"conversation": conversation},
+    )
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    data = resp.json()
+    return _text(
+        f"Session observed. Facts extracted: {data['facts_extracted']}, "
+        f"memories updated: {data['memories_updated']}"
+    )
+
+
+async def _memories(client: httpx.AsyncClient) -> list[types.TextContent]:
+    resp = await client.get(f"{BASE_URL}/api/memory/list")
+    if resp.status_code != 200:
+        return _text(f"Error: {resp.status_code}")
+    mems = resp.json()
+    if not mems:
+        return _text("No active memories.")
+    lines = []
+    for m in mems:
+        rel = f" [{m['relation']}]" if m.get("relation") else ""
+        date = (m.get("created_at") or "")[:10]
+        lines.append(f"• {m['content']}{rel}\n  id: {m['id']}  |  {m['source']}  |  {date}")
+    return _text(f"Active memories: {len(mems)}\n\n" + "\n\n".join(lines))
+
+
 async def _index_file(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     path = args["path"]
     tags = args.get("tags", [])
@@ -255,15 +305,11 @@ async def _index_file(client: httpx.AsyncClient, args: dict) -> list[types.TextC
 
     if status == "already_indexed":
         return _text(f"Already indexed (doc_id: {doc_id})")
-
     if status in ("pending", "already_queued") and job_id:
-        if tags:
-            _pending_metadata[job_id] = {"tags": tags}
         return _text(
             f"File accepted: {filename}\njob_id: {job_id}\n"
             f"Use check_indexing('{job_id}') to confirm."
         )
-
     return _text(f"Unexpected response: {data}")
 
 
@@ -278,19 +324,6 @@ async def _check_indexing(client: httpx.AsyncClient, args: dict) -> list[types.T
 
     status = job.get("status")
     doc_id = job.get("doc_id")
-
-    if status == "done" and doc_id and job_id in _pending_metadata:
-        meta = _pending_metadata.pop(job_id)
-        patch: dict = {}
-        if "title" in meta:
-            patch["title"] = meta["title"]
-        if "tags" in meta:
-            patch["tags"] = meta["tags"]
-        if patch:
-            try:
-                await client.patch(f"{BASE_URL}/api/documents/{doc_id}", json=patch)
-            except Exception:
-                pass
 
     if status == "done":
         return _text(f"✓ Done. doc_id: {doc_id}")
@@ -318,11 +351,15 @@ async def _list_memories(client: httpx.AsyncClient) -> list[types.TextContent]:
 
 async def _forget(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     doc_id = args["doc_id"]
-    resp = await client.delete(f"{BASE_URL}/api/documents/{doc_id}")
-    if resp.status_code == 204:
-        return _text(f"✓ Deleted (doc_id: {doc_id})")
-    elif resp.status_code == 404:
-        return _text(f"Document not found: {doc_id}")
+    # Try memory endpoint first, fall back to documents
+    resp = await client.delete(f"{BASE_URL}/api/memory/{doc_id}")
+    if resp.status_code in (200, 204):
+        return _text(f"✓ Memory deleted (id: {doc_id})")
+    if resp.status_code == 404:
+        resp2 = await client.delete(f"{BASE_URL}/api/documents/{doc_id}")
+        if resp2.status_code == 204:
+            return _text(f"✓ Document deleted (doc_id: {doc_id})")
+        return _text(f"Not found: {doc_id}")
     return _text(f"Error: {resp.status_code}")
 
 
