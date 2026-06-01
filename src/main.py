@@ -47,12 +47,13 @@ async def lifespan(app: FastAPI):
     worker = IngestionWorker(
         session_factory=session_factory,
         pipeline=get_ingestion_pipeline(),
+        memory_service_factory=get_memory_service,
     )
     _worker_task = asyncio.create_task(worker.start())
     _expiry_task = asyncio.create_task(_memory_expiry_loop(session_factory))
 
     # Warm up models so first query isn't slow
-    from src.dependencies import get_retrieval_service, get_embedding_client
+    from src.dependencies import get_retrieval_service, get_embedding_client, get_memory_service
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, get_retrieval_service().reranker._get_model)
     embed_client = get_embedding_client()

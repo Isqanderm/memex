@@ -99,3 +99,103 @@ async def test_memory_worker_queues_job_after_doc_indexing():
     await queue_document_extraction(session, str(doc_id))
     session.add.assert_called_once()
     session.flush.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ingestion_worker_calls_memory_factory_on_success():
+    """IngestionWorker calls memory_service_factory after successful indexing."""
+    from src.ingestion.worker import IngestionWorker
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    doc_id = uuid.uuid4()
+    pipeline = MagicMock()
+    pipeline.process = AsyncMock(return_value=doc_id)
+
+    memory_service = MagicMock()
+    memory_service_factory = MagicMock(return_value=memory_service)
+
+    session = AsyncMock()
+    # Simulate execute() returning chunks with content
+    chunk_row = MagicMock()
+    chunk_row.__iter__ = MagicMock(return_value=iter([("Some document text",)]))
+    result_mock = MagicMock()
+    result_mock.all.return_value = [("Some document text",)]
+    session.execute = AsyncMock(return_value=result_mock)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    job_repo = MagicMock()
+    job = MagicMock()
+    job.id = uuid.uuid4()
+    job.source = "/tmp/test.txt"
+    job.checksum = "abc123"
+    job_repo.claim_next = AsyncMock(return_value=job)
+    job_repo.mark_done = AsyncMock()
+
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    begin_cm = MagicMock()
+    begin_cm.__aenter__ = AsyncMock(return_value=None)
+    begin_cm.__aexit__ = AsyncMock(return_value=False)
+    session.begin = MagicMock(return_value=begin_cm)
+
+    import src.ingestion.worker as worker_mod
+    original_repo = worker_mod.JobRepository
+    worker_mod.JobRepository = MagicMock(return_value=job_repo)
+
+    session_factory = MagicMock(return_value=session_cm)
+
+    try:
+        worker = IngestionWorker(
+            session_factory=session_factory,
+            pipeline=pipeline,
+            memory_service_factory=memory_service_factory,
+        )
+        await worker._process_one()
+        memory_service_factory.assert_called_once_with(session)
+    finally:
+        worker_mod.JobRepository = original_repo
+
+
+@pytest.mark.asyncio
+async def test_ingestion_worker_skips_memory_when_no_factory():
+    """IngestionWorker with no memory_service_factory doesn't fail."""
+    from src.ingestion.worker import IngestionWorker
+
+    doc_id = uuid.uuid4()
+    pipeline = MagicMock()
+    pipeline.process = AsyncMock(return_value=doc_id)
+
+    session = AsyncMock()
+    job_repo = MagicMock()
+    job = MagicMock()
+    job.id = uuid.uuid4()
+    job.source = "/tmp/test.txt"
+    job.checksum = "abc123"
+    job_repo.claim_next = AsyncMock(return_value=job)
+    job_repo.mark_done = AsyncMock()
+
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    begin_cm = MagicMock()
+    begin_cm.__aenter__ = AsyncMock(return_value=None)
+    begin_cm.__aexit__ = AsyncMock(return_value=False)
+    session.begin = MagicMock(return_value=begin_cm)
+    session_factory = MagicMock(return_value=session_cm)
+
+    import src.ingestion.worker as worker_mod
+    original_repo = worker_mod.JobRepository
+    worker_mod.JobRepository = MagicMock(return_value=job_repo)
+
+    try:
+        worker = IngestionWorker(
+            session_factory=session_factory,
+            pipeline=pipeline,
+            memory_service_factory=None,
+        )
+        result = await worker._process_one()
+        assert result is True
+    finally:
+        worker_mod.JobRepository = original_repo
