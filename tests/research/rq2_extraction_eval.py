@@ -22,10 +22,10 @@ EXTRACT_PROMPT = """\
 Extract atomic facts about the user from the following text.
 Rules:
 - Each fact is one statement, no pronouns — use "User" as subject.
-- Include only lasting facts: identity, skills, location, work, relationships, current projects, preferences.
-- Exclude: opinions about events ("enjoyed the talks"), reactions, temporary states, third-party info, weather.
+- Include: identity, skills, location, work, relationships, projects, preferences, events the user participated in.
+- Exclude: opinions and emotional reactions ("talks were great", "enjoyed it"), third-party info, weather. Always extract the underlying event/fact even if accompanied by an opinion.
 - Normalize state: prefer "User uses X" over "User switched from Y to X".
-- If a fact is time-bound (e.g. "meeting tomorrow"), add "forget_after": "<ISO datetime close to the event>".
+- Time-bound facts (meetings, trips, deadlines) ARE included — add "forget_after": "<ISO datetime>" for them.
 - For permanent facts, omit "forget_after".
 
 Text: {text}

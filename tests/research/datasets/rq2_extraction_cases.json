@@ -38,9 +38,9 @@
       "expected": [{"id": "bbb-1", "type": "extends"}]
     },
     {
-      "new_fact": "User has over 10 years of experience",
+      "new_fact": "User has about 10 years of coding experience",
       "existing": [
-        {"id": "ccc-1", "content": "User was born in 1990"}
+        {"id": "ccc-1", "content": "User started coding professionally in 2015"}
       ],
       "expected": [{"id": "ccc-1", "type": "derives"}]
     },
