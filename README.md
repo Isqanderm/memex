@@ -9,8 +9,6 @@
 [![pgvector](https://img.shields.io/badge/pgvector-PostgreSQL-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![MCP](https://img.shields.io/badge/MCP-Claude_Code-orange)](https://docs.anthropic.com/en/docs/claude-code/mcp)
 
-![Memex demo](docs/memex-demo.gif)
-
 ---
 
 ## Why Memex?
