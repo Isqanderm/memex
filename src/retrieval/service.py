@@ -9,6 +9,7 @@ from src.retrieval.expand import expand_to_l2
 from src.retrieval.reranker import Reranker
 from src.retrieval.context import ContextBuilder
 from src.llm.protocol import LLMProvider
+from src.retrieval.memory_search import MemorySearch, MemoryHit
 
 
 @dataclass
@@ -29,6 +30,7 @@ class RetrievalService:
         llm_provider: LLMProvider,
         rrf_k: int = 60,
         reranker_top_n: int = 5,
+        memory_search: "MemorySearch | None" = None,
     ):
         self.semantic_search = semantic_search
         self.bm25_search = bm25_search
@@ -37,6 +39,7 @@ class RetrievalService:
         self.llm_provider = llm_provider
         self.rrf_k = rrf_k
         self.reranker_top_n = reranker_top_n
+        self.memory_search = memory_search
 
     async def query(
         self,
@@ -56,7 +59,17 @@ class RetrievalService:
         reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
 
         ctx = self.context_builder.build(query, reranked)
-        llm_response = await self.llm_provider.complete(ctx.prompt)
+
+        # Prepend memory context if memory_search is configured
+        memory_prefix = ""
+        if self.memory_search:
+            mem_hits = await self.memory_search.search(session, query_vector)
+            if mem_hits:
+                lines = "\n".join(f"- {h.content} [memory]" for h in mem_hits[:5])
+                memory_prefix = f"Personal facts about the user:\n{lines}\n\n"
+
+        final_prompt = memory_prefix + ctx.prompt
+        llm_response = await self.llm_provider.complete(final_prompt)
 
         return QueryResult(
             answer=llm_response.answer,
@@ -105,7 +118,17 @@ class RetrievalService:
         reranked = await self.reranker.rerank(query, l2_chunks, top_n=self.reranker_top_n)
         ctx = self.context_builder.build(query, reranked)
 
-        async for token in self.llm_provider.complete_stream(ctx.prompt):
+        # Prepend memory context if memory_search is configured
+        memory_prefix = ""
+        if self.memory_search:
+            mem_hits = await self.memory_search.search(session, query_vector)
+            if mem_hits:
+                lines = "\n".join(f"- {h.content} [memory]" for h in mem_hits[:5])
+                memory_prefix = f"Personal facts about the user:\n{lines}\n\n"
+
+        final_prompt = memory_prefix + ctx.prompt
+
+        async for token in self.llm_provider.complete_stream(final_prompt):
             yield {"type": "token", "data": token}
 
         yield {"type": "sources", "data": ctx.sources}
