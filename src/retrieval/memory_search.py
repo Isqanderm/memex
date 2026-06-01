@@ -15,6 +15,9 @@ class MemoryHit:
 
 
 class MemorySearch:
+    # Lower threshold than conflict detection (0.75) — retrieval needs broader recall
+    RETRIEVAL_THRESHOLD = 0.5
+
     def __init__(self, repo: MemoryRepository, top_k: int = 10):
         self.repo = repo
         self.top_k = top_k
@@ -24,7 +27,9 @@ class MemorySearch:
         session: AsyncSession,
         query_vector: list[float],
     ) -> list[MemoryHit]:
-        results = await self.repo.get_active_by_vector(query_vector, limit=self.top_k)
+        results = await self.repo.get_active_by_vector(
+            query_vector, limit=self.top_k, threshold=self.RETRIEVAL_THRESHOLD
+        )
         return [
             MemoryHit(
                 memory_id=mem.id,

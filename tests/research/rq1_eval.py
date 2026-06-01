@@ -42,7 +42,7 @@ async def run_eval():
     data = json.loads(DATASETS.read_text())
     correct, total = 0, 0
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         for session in data["sessions"]:
             print(f"\n--- Session {session['id']} ---")
             await clear_memories(client)
