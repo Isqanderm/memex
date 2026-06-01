@@ -39,6 +39,22 @@ Most document Q&A tools are SaaS — your documents leave your machine. Memex ru
 - **Configurable LLM:** Claude or GPT-4o via env variable
 - **Three interfaces:** Web UI + REST API + MCP server for Claude Code
 
+## ⚠️ Upgrading from 1.x
+
+Version 2.0 changes the embedding model (OpenAI → local `multilingual-e5-small`, 384 dims). **Existing vectors are incompatible** — migration 0004 NULLs them automatically. After upgrading you must re-index:
+
+```bash
+docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+docker exec memex alembic upgrade head
+docker exec memex uv run python scripts/reindex.py   # restores search
+```
+
+Remove from `.env`: `OPENAI_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` (no longer used for embeddings).
+
+See [CHANGELOG.md](CHANGELOG.md) for full breaking changes.
+
+---
+
 ## Quick start
 
 ```bash
