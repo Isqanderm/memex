@@ -82,6 +82,11 @@ async def list_tools() -> list[types.Tool]:
                         "description": "Кол-во чанков (только при raw=true, default 5)",
                         "default": 5,
                     },
+                    "category": {
+                        "type": "string",
+                        "enum": ["research", "reminder", "thought", "decision", "preference"],
+                        "description": "Filter memories by category (optional)",
+                    },
                 },
                 "required": ["query"],
             },
@@ -269,6 +274,7 @@ async def _memories(client: httpx.AsyncClient) -> list[types.TextContent]:
 async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     query = args["query"]
     raw = args.get("raw", False)
+    category = args.get("category")
 
     if raw:
         top_k = args.get("top_k", 5)
@@ -289,9 +295,12 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
             lines.append(f"[{i}] {name}{section}{page}\n{c['text']}\n")
         return _text("\n".join(lines))
     else:
+        payload: dict = {"query": query}
+        if category:
+            payload["memory_category"] = category
         resp = await client.post(
             f"{BASE_URL}/api/query",
-            json={"query": query},
+            json=payload,
         )
         if resp.status_code != 200:
             return _text(f"Ошибка поиска: {resp.status_code}")

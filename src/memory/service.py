@@ -82,5 +82,5 @@ class MemoryService:
         await self.repo.deactivate(memory_id)
         return True
 
-    async def list_active(self, session: AsyncSession) -> list[Memory]:
-        return await self.repo.get_all_active()
+    async def list_active(self, session: AsyncSession, category: str | None = None) -> list[Memory]:
+        return await self.repo.get_all_active(category=category)

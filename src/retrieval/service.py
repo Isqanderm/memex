@@ -48,6 +48,7 @@ class RetrievalService:
         query: str,
         embed_fn,
         memory_search: "MemorySearch | None" = None,
+        memory_category: str | None = None,
     ) -> QueryResult:
         t = StepTimer("query")
 
@@ -68,7 +69,7 @@ class RetrievalService:
         mem_hits = []
         if effective_memory_search:
             with t.step("memory"):
-                mem_hits = await effective_memory_search.search(session, query_vector)
+                mem_hits = await effective_memory_search.search(session, query_vector, category=memory_category)
 
         ctx = self.context_builder.build(query, reranked, memory_hits=mem_hits)
 
@@ -115,6 +116,7 @@ class RetrievalService:
         query: str,
         embed_fn,
         memory_search: "MemorySearch | None" = None,
+        memory_category: str | None = None,
     ) -> AsyncIterator[dict]:
         t = StepTimer("stream")
 
@@ -134,7 +136,7 @@ class RetrievalService:
         mem_hits = []
         if effective_memory_search:
             with t.step("memory"):
-                mem_hits = await effective_memory_search.search(session, query_vector)
+                mem_hits = await effective_memory_search.search(session, query_vector, category=memory_category)
 
         ctx = self.context_builder.build(query, reranked, memory_hits=mem_hits)
         t.log()  # log before streaming starts

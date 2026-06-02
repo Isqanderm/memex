@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.documents import get_db_session
@@ -42,14 +42,17 @@ async def observe(
 @router.get("/list")
 async def list_memories(
     session: AsyncSession = Depends(get_db_session),
+    category: str | None = Query(default=None, description="Filter: research|reminder|thought|decision|preference"),
 ):
     service = get_memory_service(session)
-    memories = await service.list_active(session)
+    memories = await service.list_active(session, category=category)
     return [
         {
             "id": str(m.id),
             "content": m.content,
             "source": m.source,
+            "category": m.category,
+            "project": m.project,
             "relation": m.relation,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }

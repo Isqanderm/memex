@@ -12,6 +12,7 @@ router = APIRouter(tags=["query"])
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 5
+    memory_category: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -34,7 +35,11 @@ async def query_documents(
     # Create per-request memory search with session-scoped repository
     memory_search = MemorySearch(repo=MemoryRepository(session))
 
-    result = await service.query(session, request.query, embed_fn=embed, memory_search=memory_search)
+    result = await service.query(
+        session, request.query, embed_fn=embed,
+        memory_search=memory_search,
+        memory_category=request.memory_category,
+    )
     return QueryResponse(answer=result.answer, sources=result.sources)
 
 
