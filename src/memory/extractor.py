@@ -13,11 +13,13 @@ Rules:
 - Normalize state: prefer "User uses X" over "User switched from Y to X".
 - Time-bound facts (meetings, trips, deadlines) ARE included — add "forget_after" as an ISO datetime for them.
 - For permanent facts, omit "forget_after".
+- Set "category" to one of: research, reminder, thought, decision, preference. Omit if none fits.
+- Set "project" to the project/context name if the fact belongs to one (e.g. "Memex", "work", "personal"). Omit if unclear.
 
 Text: {text}
 
 Return JSON only:
-{{"facts": [{{"content": "...", "forget_after": "...or omit"}}]}}"""
+{{"facts": [{{"content": "...", "forget_after": "...or omit", "category": "...or omit", "project": "...or omit"}}]}}"""
 
 RESOLVE_PROMPT = """\
 New fact: "{new_fact}"
@@ -39,6 +41,8 @@ Return JSON only:
 class ExtractedFact:
     content: str
     forget_after: datetime | None = None
+    category: str | None = None   # research|reminder|thought|decision|preference
+    project: str | None = None
 
 
 @dataclass
@@ -72,7 +76,12 @@ class FactExtractor:
                         forget_after = datetime.fromisoformat(fa)
                     except ValueError:
                         pass
-                results.append(ExtractedFact(content=f["content"], forget_after=forget_after))
+                results.append(ExtractedFact(
+                    content=f["content"],
+                    forget_after=forget_after,
+                    category=f.get("category") or None,
+                    project=f.get("project") or None,
+                ))
             return results
         except Exception:
             return []

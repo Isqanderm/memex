@@ -70,6 +70,8 @@ class Memory(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("memories.id"), nullable=True
     )
+    category: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    project: Mapped[str | None] = mapped_column(String(100), nullable=True)
     content_vector: Mapped[list[float] | None] = mapped_column(Vector(384))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
