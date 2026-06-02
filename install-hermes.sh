@@ -144,7 +144,7 @@ else
       LLM_KEY_LINE="OPENAI_LLM_API_KEY=${OPENAI_LLM_API_KEY}"
     else
       LLM_PROVIDER_VAL=claude
-      LLM_MODEL_VAL=claude-haiku-4-5-20251001
+      LLM_MODEL_VAL=claude-haiku-4-5
       LLM_KEY_LINE="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
     fi
     cat > .env <<EOF

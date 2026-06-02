@@ -2,7 +2,9 @@
 
 Connect Memex to a running Hermes agent as a persistent memory MCP server.
 
-**What you get:** tools `mcp_memex_remember`, `mcp_memex_recall`, `mcp_memex_index_file`, `mcp_memex_check_indexing`, `mcp_memex_list_memories`, `mcp_memex_forget` available to your Hermes agent.
+**What you get:** tools `mcp_memex_context`, `mcp_memex_remember`, `mcp_memex_recall`, `mcp_memex_observe`, `mcp_memex_memories`, `mcp_memex_index_file`, `mcp_memex_check_indexing`, `mcp_memex_list_memories`, `mcp_memex_forget` available to your Hermes agent.
+
+**Session protocol:** call `mcp_memex_context` at session start to inject user profile; call `mcp_memex_observe` at session end to extract new facts from the conversation.
 
 ## Prerequisites
 
