@@ -97,3 +97,33 @@ async def test_service_remember_passes_category_to_repo():
     call_kwargs = repo.create.call_args.kwargs
     assert call_kwargs["category"] == "decision"
     assert call_kwargs["project"] == "Memex"
+
+
+from src.retrieval.memory_search import MemorySearch, MemoryHit
+from datetime import datetime, timezone
+
+
+@pytest.mark.asyncio
+async def test_memory_hit_exposes_category_and_project():
+    mem = make_memory(category="research", project="Memex")
+    mem.created_at = datetime.now(timezone.utc)
+    repo = MagicMock()
+    repo.get_active_by_vector = AsyncMock(return_value=[(mem, 0.9)])
+
+    search = MemorySearch(repo=repo)
+    hits = await search.search(AsyncMock(), query_vector=[0.1] * 384)
+
+    assert hits[0].category == "research"
+    assert hits[0].project == "Memex"
+
+
+@pytest.mark.asyncio
+async def test_memory_search_passes_category_to_repo():
+    repo = MagicMock()
+    repo.get_active_by_vector = AsyncMock(return_value=[])
+
+    search = MemorySearch(repo=repo)
+    await search.search(AsyncMock(), query_vector=[0.1] * 384, category="reminder")
+
+    call_kwargs = repo.get_active_by_vector.call_args.kwargs
+    assert call_kwargs.get("category") == "reminder"
