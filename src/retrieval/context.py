@@ -55,7 +55,15 @@ class ContextBuilder:
         if memory_hits:
             sources_text += "\nPersonal memory facts:\n"
             for hit in memory_hits[:5]:
-                sources_text += f"  [memory] {hit.content}\n"
+                parts = ["memory"]
+                if hit.category:
+                    parts.append(hit.category)
+                if hit.project:
+                    parts.append(hit.project)
+                if hit.created_at:
+                    parts.append(hit.created_at.strftime("%Y-%m-%d"))
+                tag = " | ".join(parts)
+                sources_text += f"  [{tag}] {hit.content}\n"
 
         if chunks:
             sources_text += "\nDocument sources:\n"
