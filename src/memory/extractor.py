@@ -59,6 +59,9 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[start:end])
 
 
+_VALID_CATEGORIES = frozenset({"research", "reminder", "thought", "decision", "preference"})
+
+
 class FactExtractor:
     def __init__(self, llm_provider: LLMProvider):
         self.llm = llm_provider
@@ -76,10 +79,12 @@ class FactExtractor:
                         forget_after = datetime.fromisoformat(fa)
                     except ValueError:
                         pass
+                raw_category = f.get("category") or None
+                category = raw_category if raw_category in _VALID_CATEGORIES else None
                 results.append(ExtractedFact(
                     content=f["content"],
                     forget_after=forget_after,
-                    category=f.get("category") or None,
+                    category=category,
                     project=f.get("project") or None,
                 ))
             return results

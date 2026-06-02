@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,7 @@ router = APIRouter(tags=["query"])
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 5
-    memory_category: str | None = None
+    memory_category: Literal["research", "reminder", "thought", "decision", "preference"] | None = None
 
 
 class QueryResponse(BaseModel):

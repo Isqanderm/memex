@@ -1,4 +1,6 @@
 import uuid
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +44,7 @@ async def observe(
 @router.get("/list")
 async def list_memories(
     session: AsyncSession = Depends(get_db_session),
-    category: str | None = Query(default=None, description="Filter: research|reminder|thought|decision|preference"),
+    category: Literal["research", "reminder", "thought", "decision", "preference"] | None = Query(default=None),
 ):
     service = get_memory_service(session)
     memories = await service.list_active(session, category=category)

@@ -266,8 +266,10 @@ async def _memories(client: httpx.AsyncClient) -> list[types.TextContent]:
     lines = []
     for m in mems:
         rel = f" [{m['relation']}]" if m.get("relation") else ""
+        cat = f" | {m['category']}" if m.get("category") else ""
+        proj = f" | {m['project']}" if m.get("project") else ""
         date = (m.get("created_at") or "")[:10]
-        lines.append(f"• {m['content']}{rel}\n  id: {m['id']}  |  {m['source']}  |  {date}")
+        lines.append(f"• {m['content']}{rel}\n  id: {m['id']}  |  {m['source']}{cat}{proj}  |  {date}")
     return _text(f"Active memories: {len(mems)}\n\n" + "\n\n".join(lines))
 
 
