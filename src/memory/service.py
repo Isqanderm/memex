@@ -61,6 +61,8 @@ class MemoryService:
                 parent_id=parent_id,
                 relation=relation_type,
                 forget_after=fact.forget_after,
+                category=fact.category,
+                project=fact.project,
             )
 
         return RememberResult(facts_extracted=facts_extracted, memories_updated=memories_updated)
