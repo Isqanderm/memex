@@ -81,11 +81,13 @@ class FactExtractor:
                         pass
                 raw_category = f.get("category") or None
                 category = raw_category if raw_category in _VALID_CATEGORIES else None
+                raw_project = f.get("project") or None
+                project = raw_project[:100] if raw_project else None
                 results.append(ExtractedFact(
                     content=f["content"],
                     forget_after=forget_after,
                     category=category,
-                    project=f.get("project") or None,
+                    project=project,
                 ))
             return results
         except Exception:
