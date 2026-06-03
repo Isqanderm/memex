@@ -23,12 +23,7 @@ RUN pip install --no-cache-dir -e .
 
 # Download models into image — no cold-start delay on first request.
 # Reranker: ~87MB, Embedding: ~117MB
-RUN python -c "
-from sentence_transformers import CrossEncoder, SentenceTransformer
-CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-SentenceTransformer('intfloat/multilingual-e5-small')
-print('Models downloaded.')
-"
+RUN python -c "from sentence_transformers import CrossEncoder, SentenceTransformer; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2'); SentenceTransformer('intfloat/multilingual-e5-small'); print('Models downloaded.')"
 
 # Copy application code
 COPY src/ src/
