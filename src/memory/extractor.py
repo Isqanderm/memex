@@ -13,11 +13,18 @@ Rules:
 - Normalize state: prefer "User uses X" over "User switched from Y to X".
 - Time-bound facts (meetings, trips, deadlines) ARE included — add "forget_after" as an ISO datetime for them.
 - For permanent facts, omit "forget_after".
+- Set "category" to the closest fit, or omit if unclear:
+    research   — findings from investigation ("e5-small has 384 dims", "Postgres is faster here")
+    reminder   — tasks and upcoming events ("Review PR by Friday", "Meeting at 3pm tomorrow")
+    decision   — concluded choices ("Decided to use TypeScript", "Chose PostgreSQL over MongoDB")
+    preference — stable personal settings ("Prefers dark mode", "Uses Python for backend")
+    insight    — ideas and observations worth noting ("Async queue scales better than polling")
+- Set "project" to the project/context name if the fact belongs to one (e.g. "Memex", "work", "personal"). Omit if unclear.
 
 Text: {text}
 
 Return JSON only:
-{{"facts": [{{"content": "...", "forget_after": "...or omit"}}]}}"""
+{{"facts": [{{"content": "...", "forget_after": "...or omit", "category": "...or omit", "project": "...or omit"}}]}}"""
 
 RESOLVE_PROMPT = """\
 New fact: "{new_fact}"
@@ -39,6 +46,8 @@ Return JSON only:
 class ExtractedFact:
     content: str
     forget_after: datetime | None = None
+    category: str | None = None   # research|reminder|insight|decision|preference
+    project: str | None = None
 
 
 @dataclass
@@ -53,6 +62,9 @@ def _parse_json(text: str) -> dict:
     if start == -1 or end == 0:
         raise ValueError(f"No JSON found in: {text[:100]}")
     return json.loads(text[start:end])
+
+
+_VALID_CATEGORIES = frozenset({"research", "reminder", "insight", "decision", "preference"})
 
 
 class FactExtractor:
@@ -72,7 +84,16 @@ class FactExtractor:
                         forget_after = datetime.fromisoformat(fa)
                     except ValueError:
                         pass
-                results.append(ExtractedFact(content=f["content"], forget_after=forget_after))
+                raw_category = f.get("category") or None
+                category = raw_category if raw_category in _VALID_CATEGORIES else None
+                raw_project = f.get("project") or None
+                project = raw_project[:100] if raw_project else None
+                results.append(ExtractedFact(
+                    content=f["content"],
+                    forget_after=forget_after,
+                    category=category,
+                    project=project,
+                ))
             return results
         except Exception:
             return []

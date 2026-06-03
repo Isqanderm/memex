@@ -51,3 +51,39 @@ def test_empty_chunks():
     ctx = builder.build("query", [])
     assert "query" in ctx.prompt
     assert ctx.sources == []
+
+
+from src.retrieval.memory_search import MemoryHit
+from datetime import datetime, timezone
+import uuid
+
+
+def make_hit(content, category=None, project=None):
+    return MemoryHit(
+        memory_id=uuid.uuid4(),
+        content=content,
+        score=0.9,
+        source="explicit",
+        created_at=datetime(2026, 5, 20, tzinfo=timezone.utc),
+        category=category,
+        project=project,
+    )
+
+
+def test_context_builder_shows_category_in_memory_tag():
+    from src.retrieval.context import ContextBuilder
+    builder = ContextBuilder()
+    hit = make_hit("User decided to use PG", category="decision", project="Memex")
+    ctx = builder.build("what db?", chunks=[], memory_hits=[hit], today="2026-06-02")
+    assert "decision" in ctx.prompt
+    assert "Memex" in ctx.prompt
+    assert "2026-05-20" in ctx.prompt
+
+
+def test_context_builder_bare_memory_tag_when_no_category():
+    from src.retrieval.context import ContextBuilder
+    builder = ContextBuilder()
+    hit = make_hit("User lives in Moscow")
+    ctx = builder.build("where?", chunks=[], memory_hits=[hit], today="2026-06-02")
+    assert "[memory]" in ctx.prompt
+    assert "decision" not in ctx.prompt

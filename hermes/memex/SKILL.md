@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Memex running at http://memex:8000 via Docker. See https://github.com/Isqanderm/memex for setup.
 metadata:
   author: Isqanderm
-  version: "2.0.0"
+  version: "2.1.0"
   tags: "memory rag knowledge-base documents search context"
 ---
 
@@ -70,6 +70,7 @@ Arguments:
 - `query` (required) — question or topic in the same language as stored content
 - `raw` (default false) — false = LLM answer; true = raw chunks (faster/cheaper)
 - `top_k` (default 5) — used only when raw=true
+- `category` (optional) — filter memory search: `research` | `reminder` | `decision` | `preference` | `insight`. Only applies when raw=false.
 
 Personal memory facts are automatically included in the response alongside document chunks.
 

@@ -57,8 +57,9 @@ ok "curl available"
 
 # ── 1. LLM API key ───────────────────────────────────────────────────────────
 # Embeddings are local (sentence-transformers) — no OpenAI key needed for them.
-if [ -z "${OPENAI_LLM_API_KEY:-}" ]; then
-  read -rsp "OpenAI LLM API key (for GPT-4o; press Enter to use Claude instead): " OPENAI_LLM_API_KEY
+# LLM supports OpenAI (default) or Anthropic Claude.
+if [ -z "${OPENAI_LLM_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  read -rsp "OpenAI LLM API key (press Enter to use Anthropic/Claude instead): " OPENAI_LLM_API_KEY
   echo
 fi
 if [ -z "${OPENAI_LLM_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
@@ -137,14 +138,13 @@ else
 
   if [ ! -f .env ]; then
     POSTGRES_PASSWORD=$(openssl rand -hex 16)
-    # Determine LLM provider from available keys
     if [ -n "${OPENAI_LLM_API_KEY:-}" ]; then
       LLM_PROVIDER_VAL=openai
       LLM_MODEL_VAL=gpt-4o-mini
       LLM_KEY_LINE="OPENAI_LLM_API_KEY=${OPENAI_LLM_API_KEY}"
     else
       LLM_PROVIDER_VAL=claude
-      LLM_MODEL_VAL=claude-haiku-4-5-20251001
+      LLM_MODEL_VAL=claude-haiku-4-5
       LLM_KEY_LINE="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
     fi
     cat > .env <<EOF

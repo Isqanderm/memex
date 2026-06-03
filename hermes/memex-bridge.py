@@ -74,6 +74,11 @@ async def list_tools() -> list[types.Tool]:
                         "description": "Number of chunks (raw=true only, default 5)",
                         "default": 5,
                     },
+                    "category": {
+                        "type": "string",
+                        "enum": ["research", "reminder", "insight", "decision", "preference"],
+                        "description": "Filter memories by category (optional)",
+                    },
                 },
                 "required": ["query"],
             },
@@ -217,8 +222,15 @@ async def _remember(client: httpx.AsyncClient, args: dict) -> list[types.TextCon
 async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
     query = args["query"]
     raw = args.get("raw", False)
+    category = args.get("category")
 
     if raw:
+        if category:
+            return _text(
+                "Note: category filter is not supported in raw=True mode "
+                "(raw mode searches document chunks, not memory facts). "
+                "Use raw=False to filter memories by category."
+            )
         top_k = args.get("top_k", 5)
         resp = await client.post(f"{BASE_URL}/api/search/chunks", json={"query": query, "top_k": top_k})
         if resp.status_code != 200:
@@ -234,7 +246,10 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
             lines.append(f"[{i}] {name}{section}{page}\n{c['text']}\n")
         return _text("\n".join(lines))
 
-    resp = await client.post(f"{BASE_URL}/api/query", json={"query": query})
+    payload: dict = {"query": query}
+    if category:
+        payload["memory_category"] = category
+    resp = await client.post(f"{BASE_URL}/api/query", json=payload)
     if resp.status_code != 200:
         return _text(f"Query error: {resp.status_code}")
     data = resp.json()
@@ -280,8 +295,10 @@ async def _memories(client: httpx.AsyncClient) -> list[types.TextContent]:
     lines = []
     for m in mems:
         rel = f" [{m['relation']}]" if m.get("relation") else ""
+        cat = f" | {m['category']}" if m.get("category") else ""
+        proj = f" | {m['project']}" if m.get("project") else ""
         date = (m.get("created_at") or "")[:10]
-        lines.append(f"• {m['content']}{rel}\n  id: {m['id']}  |  {m['source']}  |  {date}")
+        lines.append(f"• {m['content']}{rel}\n  id: {m['id']}  |  {m['source']}{cat}{proj}  |  {date}")
     return _text(f"Active memories: {len(mems)}\n\n" + "\n\n".join(lines))
 
 

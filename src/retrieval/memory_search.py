@@ -1,5 +1,5 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.repositories.memory_repo import MemoryRepository
@@ -12,6 +12,8 @@ class MemoryHit:
     score: float
     source: str
     created_at: datetime
+    category: str | None = None
+    project: str | None = None
 
 
 class MemorySearch:
@@ -27,9 +29,10 @@ class MemorySearch:
         self,
         session: AsyncSession,
         query_vector: list[float],
+        category: str | None = None,
     ) -> list[MemoryHit]:
         results = await self.repo.get_active_by_vector(
-            query_vector, limit=self.top_k, threshold=self.RETRIEVAL_THRESHOLD
+            query_vector, limit=self.top_k, threshold=self.RETRIEVAL_THRESHOLD, category=category
         )
         return [
             MemoryHit(
@@ -38,6 +41,8 @@ class MemorySearch:
                 score=score,
                 source=mem.source,
                 created_at=mem.created_at,
+                category=mem.category,
+                project=mem.project,
             )
             for mem, score in results
         ]

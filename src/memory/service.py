@@ -61,6 +61,8 @@ class MemoryService:
                 parent_id=parent_id,
                 relation=relation_type,
                 forget_after=fact.forget_after,
+                category=fact.category,
+                project=fact.project,
             )
 
         return RememberResult(facts_extracted=facts_extracted, memories_updated=memories_updated)
@@ -80,5 +82,5 @@ class MemoryService:
         await self.repo.deactivate(memory_id)
         return True
 
-    async def list_active(self, session: AsyncSession) -> list[Memory]:
-        return await self.repo.get_all_active()
+    async def list_active(self, session: AsyncSession, category: str | None = None) -> list[Memory]:
+        return await self.repo.get_all_active(category=category)

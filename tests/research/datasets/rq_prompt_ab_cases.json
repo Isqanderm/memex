@@ -1,0 +1,219 @@
+{
+  "description": "A/B test dataset for ContextBuilder prompt comparison (v1 vs v2). Each case provides memories and document chunks directly — no server needed.",
+  "cases": [
+    {
+      "id": "memory_priority_location",
+      "category": "memory_priority",
+      "description": "Answer is in memory, conflicting older info in document",
+      "memories": [
+        "User lives in Saint Petersburg"
+      ],
+      "chunks": [
+        {
+          "content": "The user previously mentioned living in Moscow. Moscow is the capital of Russia.",
+          "source": "old_notes.md",
+          "title": "Old notes"
+        }
+      ],
+      "question": "Where does the user live?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "Petersburg",
+      "anti_keyword": "Moscow",
+      "scoring_note": "Memory should override older document info"
+    },
+    {
+      "id": "memory_priority_job",
+      "category": "memory_priority",
+      "description": "Job update: memory has new employer, document has old",
+      "memories": [
+        "User works at Beta Ltd as a backend engineer"
+      ],
+      "chunks": [
+        {
+          "content": "Resume: Acme Corp, Software Engineer, 2020-2024. Responsibilities included backend development.",
+          "source": "resume.pdf",
+          "title": "Resume"
+        }
+      ],
+      "question": "Where does the user work?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "Beta",
+      "anti_keyword": "Acme",
+      "scoring_note": "Memory (current employer) should win over CV (old employer)"
+    },
+    {
+      "id": "document_priority_technical",
+      "category": "document_priority",
+      "description": "Technical question — answer is only in documents, not memory",
+      "memories": [
+        "User prefers Python for backend development"
+      ],
+      "chunks": [
+        {
+          "content": "Memex uses hybrid search: pgvector for semantic search combined with BM25 full-text search, merged via RRF (Reciprocal Rank Fusion). The reranker is a local cross-encoder model.",
+          "source": "architecture.md",
+          "title": "Architecture"
+        }
+      ],
+      "question": "How does Memex search work?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "BM25",
+      "anti_keyword": null,
+      "scoring_note": "Technical answer from document, memory irrelevant"
+    },
+    {
+      "id": "document_priority_product",
+      "category": "document_priority",
+      "description": "Product question from docs, memory is unrelated",
+      "memories": [
+        "User was born in 1990"
+      ],
+      "chunks": [
+        {
+          "content": "Memex supports PDF, DOCX, MD, TXT, PPTX, XLSX and EPUB formats. Files are parsed and chunked automatically after upload.",
+          "source": "readme.md",
+          "title": "README"
+        }
+      ],
+      "question": "What file formats does Memex support?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "PDF",
+      "anti_keyword": null,
+      "scoring_note": "Answer entirely from document, memory should be ignored"
+    },
+    {
+      "id": "temporal_current_vs_past",
+      "category": "temporal",
+      "description": "Question about current state — memory is recent, chunk is historical",
+      "memories": [
+        "User started a new project called Nexus in May 2026"
+      ],
+      "chunks": [
+        {
+          "content": "In 2024, the user was working on Project Atlas, a data pipeline tool. Atlas was completed in Q4 2024.",
+          "source": "journal.md",
+          "title": "Work journal"
+        }
+      ],
+      "question": "What project is the user currently working on?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "Nexus",
+      "anti_keyword": "Atlas",
+      "scoring_note": "Current project from memory, not the completed old one"
+    },
+    {
+      "id": "temporal_date_awareness",
+      "category": "temporal",
+      "description": "Time-relative question requiring date awareness",
+      "memories": [
+        "User has a dentist appointment on 2026-06-10"
+      ],
+      "chunks": [],
+      "question": "Does the user have any upcoming appointments?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "dentist",
+      "anti_keyword": null,
+      "scoring_note": "June 10 is upcoming from the question date of June 2"
+    },
+    {
+      "id": "knowledge_update_city",
+      "category": "knowledge_update",
+      "description": "Both old and new facts in context — should use the updated one",
+      "memories": [
+        "User lives in Saint Petersburg"
+      ],
+      "chunks": [
+        {
+          "content": "User mentioned: I live in Moscow. The city has great museums.",
+          "source": "chat_2025.md",
+          "title": "Old chat"
+        }
+      ],
+      "question": "What city does the user live in?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "Petersburg",
+      "anti_keyword": "Moscow",
+      "scoring_note": "Memory is newer/more authoritative than old chat log"
+    },
+    {
+      "id": "abstaining_no_info",
+      "category": "abstaining",
+      "description": "Question about something not in any context",
+      "memories": [
+        "User prefers dark mode"
+      ],
+      "chunks": [
+        {
+          "content": "Memex is a self-hosted RAG system for documents.",
+          "source": "readme.md",
+          "title": "README"
+        }
+      ],
+      "question": "What is the user's mother's name?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "don't know",
+      "anti_keyword": null,
+      "scoring_note": "Must say I don't know, not hallucinate"
+    },
+    {
+      "id": "abstaining_partial_info",
+      "category": "abstaining",
+      "description": "Context has related but not sufficient info",
+      "memories": [
+        "User works as a software engineer"
+      ],
+      "chunks": [
+        {
+          "content": "Software engineers typically earn between $80k-$200k depending on location and experience.",
+          "source": "industry_report.md",
+          "title": "Industry report"
+        }
+      ],
+      "question": "What is the user's exact salary?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "don't know",
+      "anti_keyword": null,
+      "scoring_note": "Generic industry data is not the user's salary — should abstain"
+    },
+    {
+      "id": "hybrid_memory_plus_doc",
+      "category": "hybrid",
+      "description": "Answer requires combining memory fact with document detail",
+      "memories": [
+        "User is building a project called Memex"
+      ],
+      "chunks": [
+        {
+          "content": "Memex uses PostgreSQL with pgvector extension for vector similarity search. It requires Docker to run.",
+          "source": "setup.md",
+          "title": "Setup guide"
+        }
+      ],
+      "question": "What database does the user's project use?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "PostgreSQL",
+      "anti_keyword": null,
+      "scoring_note": "Memory identifies which project, document gives the tech detail"
+    },
+    {
+      "id": "hybrid_preference_plus_doc",
+      "category": "hybrid",
+      "description": "User preference from memory + document content combine",
+      "memories": [
+        "User prefers Python for backend development"
+      ],
+      "chunks": [
+        {
+          "content": "The project supports multiple languages: Python SDK, TypeScript SDK, and Go client library.",
+          "source": "docs.md",
+          "title": "SDK docs"
+        }
+      ],
+      "question": "Which SDK should the user use for their backend?",
+      "question_date": "2026-06-02",
+      "expected_keyword": "Python",
+      "anti_keyword": null,
+      "scoring_note": "Combine user preference (memory) with available options (document)"
+    }
+  ]
+}

@@ -18,6 +18,8 @@ class MemoryRepository:
         parent_id: uuid.UUID | None = None,
         relation: str | None = None,
         forget_after: datetime | None = None,
+        category: str | None = None,
+        project: str | None = None,
     ) -> Memory:
         m = Memory(
             id=uuid.uuid4(),
@@ -29,6 +31,8 @@ class MemoryRepository:
             relation=relation,
             parent_id=parent_id,
             content_vector=vector,
+            category=category,
+            project=project,
         )
         self.session.add(m)
         await self.session.flush()
@@ -43,10 +47,11 @@ class MemoryRepository:
             mem.is_active = False
             await self.session.flush()
 
-    async def get_all_active(self) -> list[Memory]:
-        result = await self.session.execute(
-            select(Memory).where(Memory.is_active == True).order_by(Memory.created_at.desc())
-        )
+    async def get_all_active(self, category: str | None = None) -> list[Memory]:
+        q = select(Memory).where(Memory.is_active == True)
+        if category:
+            q = q.where(Memory.category == category)
+        result = await self.session.execute(q.order_by(Memory.created_at.desc()))
         return list(result.scalars().all())
 
     async def get_by_id(self, memory_id: uuid.UUID) -> Memory | None:
@@ -60,9 +65,14 @@ class MemoryRepository:
         vector: list[float],
         limit: int = 5,
         threshold: float = 0.75,
+        category: str | None = None,
     ) -> list[tuple[Memory, float]]:
         # Inline vector like SemanticSearch does — SQLAlchemy text() mishandles :param::type cast
         vec_str = "[" + ",".join(str(x) for x in vector) + "]"
+        category_filter = "AND category = :category" if category else ""
+        params: dict = {"threshold": threshold, "limit": limit}
+        if category:
+            params["category"] = category
         rows = await self.session.execute(
             text(f"""
                 SELECT id, 1 - (content_vector <=> '{vec_str}'::vector) AS score
@@ -70,10 +80,11 @@ class MemoryRepository:
                 WHERE is_active = TRUE
                   AND content_vector IS NOT NULL
                   AND 1 - (content_vector <=> '{vec_str}'::vector) >= :threshold
+                  {category_filter}
                 ORDER BY content_vector <=> '{vec_str}'::vector
                 LIMIT :limit
             """),
-            {"threshold": threshold, "limit": limit},
+            params,
         )
         ids_scores = [(row.id, row.score) for row in rows]
         if not ids_scores:

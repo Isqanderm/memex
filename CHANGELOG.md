@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-06-03
+
+### Added
+
+- **Memory categories** — `category` (research/reminder/decision/preference/insight) and `project` fields on memory facts, extracted automatically by LLM during `remember()`. No manual tagging required.
+- **Category filtering** — `recall(query, category="research")` MCP tool, `GET /api/memory/list?category=...`, `POST /api/query` with `memory_category` field. Invalid category values rejected at API boundary with 422.
+- **Rich retrieval context** — memories display as `[memory | decision | Memex | 2026-06-02]` instead of `[memory]`, giving LLM temporal and categorical context for better reasoning.
+- **ContextBuilder v2** — explicit memory vs document hierarchy, today's date injection, explicit "I don't know" instruction. A/B benchmark: +23% keyword accuracy, zero regressions.
+- **A/B benchmark** — `tests/research/rq_prompt_ab_test.py`, 11 cases across 6 categories.
+- **ADR-0016** — documents the local embedding decision.
+
+### Upgrading from 2.0.0
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+docker exec memex alembic upgrade head   # applies migration 0006
+```
+
+Migration 0006 adds nullable `category` and `project` columns — no data loss, no re-indexing required.
+
+---
+
 ## [2.0.0] — 2026-06-02
 
 ### ⚠️ Breaking Changes

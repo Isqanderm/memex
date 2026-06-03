@@ -27,7 +27,7 @@ Personal RAG система. Один пользователь. Индексир
 | База данных | PostgreSQL 15 + pgvector |
 | Полнотекстовый поиск | PostgreSQL tsvector (встроен, не Elasticsearch) |
 | Фоновые задачи | asyncio task + PostgreSQL как очередь (`ingestion_jobs`) |
-| Embedding | OpenAI text-embedding-3-small (API) |
+| Embedding | intfloat/multilingual-e5-small (локально, sentence-transformers, 384 dims) |
 | Reranker | cross-encoder/ms-marco-MiniLM-L-6-v2 (локально, sentence-transformers) |
 | LLM | Claude / GPT-4o (конфигурируемо через `LLM_PROVIDER` env) |
 | UI | FastAPI + Jinja2 + HTMX |
@@ -49,6 +49,7 @@ src/
 ├── adapters/      ← Adapter Layer: AdapterRegistry + адаптеры по форматам
 ├── ingestion/     ← Ingestion Pipeline: Chunker, EmbeddingStage, IndexingStage
 ├── retrieval/     ← Retrieval Pipeline: Search, RRF, Expand, Reranker, ContextBuilder
+├── memory/        ← Memory Layer: FactExtractor, MemoryService, ProfileService, worker
 ├── llm/           ← LLM Provider abstraction: Protocol, ClaudeProvider, OpenAIProvider
 ├── models/        ← Shared data models: Document, Chunk, ParsedDocument, Section
 └── db/            ← Database: connection, migrations, repository classes
@@ -129,10 +130,12 @@ QueryProcessor → SemanticSearch + BM25Search (параллельно)
 - Reranker запускается **после** Expand (видит L2, не L1)
 - RRF k=60 — не менять без измерений recall
 
-### Embedding (ADR-0004)
-- Модель: `text-embedding-3-small`, размерность 1536
-- Батчинг при индексации обязателен (до 2048 текстов за раз)
-- При недоступности API — возвращать ошибку, не падать тихо
+### Embedding (ADR-0004, superseded)
+- Модель: `intfloat/multilingual-e5-small` (локально), размерность **384**
+- e5-style префиксы: `"query: "` для поисковых запросов, `"passage: "` для документов при индексации
+- Батчинг при индексации обязателен (до 512 текстов за раз)
+- Модель загружается один раз при старте сервиса (`lifespan`), не при каждом запросе
+- Нет зависимости от внешнего API — работает офлайн
 
 ### UI — FastAPI + Jinja2 + HTMX (ADR-0007)
 - `src/ui/` — отдельный модуль с Jinja2 шаблонами
@@ -152,6 +155,40 @@ QueryProcessor → SemanticSearch + BM25Search (параллельно)
 - Модель грузится **один раз** при старте сервиса, не при каждом запросе
 - Запускается на L2 чанках (не L1)
 - Возвращает top-3-5 чанков
+
+### Memory Layer
+
+Слой персональной памяти поверх документного RAG. Хранит атомарные факты о пользователе с эволюцией во времени.
+
+**Таблица `memories`:**
+- `content` — атомарный факт ("User works at Acme Corp")
+- `source` — `explicit` | `conversation` | `document`
+- `category` — `research` | `reminder` | `thought` | `decision` | `preference` (nullable, извлекается LLM)
+- `project` — проект/контекст (nullable, max 100 символов)
+- `relation` — `updates` | `extends` | `derives` — связь с предыдущей версией факта
+- `parent_id` — FK на более старую версию того же факта
+- `is_active` — `False` когда факт устарел/заменён
+- `forget_after` — автоустаревание для временных фактов
+
+**Pipeline `remember(text)`:**
+```
+text → FactExtractor (LLM) → ExtractedFact(content, category, project, forget_after)
+     → embed → get_active_by_vector (threshold=0.60) → resolve_relations (LLM)
+     → если updates: deactivate old → repo.create(новый факт)
+```
+
+**Retrieval:**
+- `MemorySearch.search()` — pgvector поиск по memories (threshold=0.30, ниже чем для conflict detection)
+- `RetrievalService.query()` инжектирует hits как первую секцию контекста: `[memory | category | project | date]`
+- `MemoryService.list_active(category=...)` — фильтрация по категории
+
+**API:** `POST /api/memory/remember`, `POST /api/memory/observe`, `GET /api/memory/list?category=...`, `GET /api/memory/context`, `DELETE /api/memory/{id}`
+
+**MCP tools:** `context` (старт сессии), `remember`, `recall`, `observe` (конец сессии), `memories`
+
+**Не делай:**
+- Не обходи `FactExtractor` — только через него обновляются факты
+- Не удаляй `is_active=False` записи — это версионная история
 
 ### Мультиязычность (ADR-0006)
 - Language detection — на уровне каждого **чанка**, не документа
@@ -215,19 +252,21 @@ chunks → tsv IS NOT NULL
 - Маркеры: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`
 - E2E тесты пропускаются без `OPENAI_API_KEY` в env
 
-## Non-Goals (MVP)
+## Non-Goals
 
-Не строится в текущей итерации. **Не добавляй без явного запроса:**
+**Не добавляй без явного запроса:**
 
 - Аутентификация и авторизация
 - Мультиарендность (несколько пользователей)
-- Веб-интерфейс (только API + MCP)
 - Автоматическая переиндексация по расписанию
 - Поддержка URL / веб-скрапинг (только локальные файлы)
-- Streaming ответов LLM
 - Query decomposition (multi-hop вопросы)
-- Contextual Enrichment (LLM-prefix на чанках при индексации)
-- Docker / Kubernetes оркестрация
+- Kubernetes оркестрация
+
+**Реализовано (были non-goals в MVP):**
+- Web UI — реализован в `src/ui/` (Jinja2 + HTMX)
+- Streaming ответов LLM — реализован через SSE (`/search/stream`)
+- Docker — production image на GHCR
 
 ---
 
@@ -244,7 +283,7 @@ chunks → tsv IS NOT NULL
 
 ## Ссылки на архитектурные артефакты
 
-- ADR: `docs/architecture/adr/` — 13 принятых решений с контекстом и альтернативами
+- ADR: `docs/architecture/adr/` — 15 принятых решений с контекстом и альтернативами
 - C4 Level 1: `docs/architecture/c4/01-system-context.md`
 - C4 Level 2: `docs/architecture/c4/02-containers.md`
 - Анализ паттернов chunking: `docs/superpowers/specs/2026-05-28-rag-chunking-patterns.md`
