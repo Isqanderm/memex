@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
@@ -32,7 +34,7 @@ async def close_db():
         _engine = None
 
 
-async def get_db_session() -> AsyncSession:
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency для получения сессии БД.
 
     Явный try/finally вместо вложенных context manager'ов — избегает

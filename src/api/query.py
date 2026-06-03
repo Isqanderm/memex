@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.documents import get_db_session
+from src.db.session import get_db_session
 from src.db.repositories.memory_repo import MemoryRepository
 from src.dependencies import get_embedding_client, get_retrieval_service
 from src.retrieval.memory_search import MemorySearch

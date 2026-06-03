@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.documents import get_db_session
+from src.db.session import get_db_session
 from src.db.models import IngestionJob
 
 router = APIRouter(tags=["jobs"])

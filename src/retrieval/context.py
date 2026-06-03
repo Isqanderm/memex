@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.retrieval.expand import L2Chunk
+from src.retrieval.memory_search import MemoryHit
 
 
 @dataclass
@@ -44,7 +45,7 @@ class ContextBuilder:
         self,
         query: str,
         chunks: list[L2Chunk],
-        memory_hits: list = None,
+        memory_hits: list[MemoryHit] | None = None,
         today: str | None = None,
     ) -> QueryContext:
         today = today or datetime.date.today().isoformat()
@@ -52,10 +53,11 @@ class ContextBuilder:
 
         sources_text = ""
         sources_meta = []
+        hits = memory_hits or []
 
-        if memory_hits:
+        if hits:
             sources_text += "\nPersonal memory facts:\n"
-            for hit in memory_hits[:5]:
+            for hit in hits[:5]:
                 parts = ["memory"]
                 if hit.category:
                     parts.append(hit.category)
