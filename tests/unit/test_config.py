@@ -1,6 +1,19 @@
 import pytest
 from pydantic import ValidationError
+
 from src.config import Settings
+
+_SETTINGS_ENV_VARS = (
+    "DATABASE_URL", "OPENAI_API_KEY", "OPENAI_LLM_API_KEY",
+    "ANTHROPIC_API_KEY", "LLM_PROVIDER", "LLM_MODEL",
+    "LLM_MAX_TOKENS", "LLM_TEMPERATURE",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolate_env(monkeypatch):
+    for key in _SETTINGS_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def _base(**kwargs) -> dict:

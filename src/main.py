@@ -1,12 +1,14 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from src.db.session import init_db, close_db, get_session_factory
-from src.ingestion.worker import IngestionWorker
-from src.dependencies import get_ingestion_pipeline
+
 from src.config import get_settings
+from src.db.session import close_db, get_session_factory, init_db
+from src.dependencies import get_ingestion_pipeline
+from src.ingestion.worker import IngestionWorker
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +49,10 @@ try:
 except Exception:
     pass  # static dir may not exist yet
 
-# Routers will be imported below
-from src.api import documents as docs_router
-from src.api import query as query_router
-from src.api import jobs as jobs_router
-from src.ui import pages as ui_router
+from src.api import documents as docs_router  # noqa: E402
+from src.api import jobs as jobs_router  # noqa: E402
+from src.api import query as query_router  # noqa: E402
+from src.ui import pages as ui_router  # noqa: E402
 
 app.include_router(docs_router.router, prefix="/api")
 app.include_router(query_router.router, prefix="/api")

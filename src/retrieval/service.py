@@ -1,14 +1,15 @@
-import asyncio
 from dataclasses import dataclass, field
 from typing import AsyncIterator
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.retrieval.semantic import SemanticSearch
+
+from src.llm.protocol import LLMProvider
 from src.retrieval.bm25 import BM25Search
-from src.retrieval.rrf import rrf_merge
+from src.retrieval.context import ContextBuilder
 from src.retrieval.expand import expand_to_l2
 from src.retrieval.reranker import Reranker
-from src.retrieval.context import ContextBuilder
-from src.llm.protocol import LLMProvider
+from src.retrieval.rrf import rrf_merge
+from src.retrieval.semantic import SemanticSearch
 
 
 @dataclass

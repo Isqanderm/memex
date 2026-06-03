@@ -1,6 +1,5 @@
-import pytest
+from src.adapters.docx import DOCX_MIME, DocxAdapter
 from src.adapters.protocol import Source
-from src.adapters.docx import DocxAdapter, DOCX_MIME
 
 
 def test_docx_can_handle_mime():

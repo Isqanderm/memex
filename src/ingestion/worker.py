@@ -1,6 +1,8 @@
 import asyncio
 import logging
+
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
 from src.db.repositories.job_repo import JobRepository
 from src.ingestion.pipeline import IngestionPipeline
 

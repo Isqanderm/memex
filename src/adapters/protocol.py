@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
 from src.models.parsed import ParsedDocument
 
 

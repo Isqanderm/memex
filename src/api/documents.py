@@ -1,14 +1,16 @@
 import hashlib
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_db_session
+
+from src.config import get_settings
 from src.db.repositories.document_repo import DocumentRepository
 from src.db.repositories.job_repo import JobRepository
-from src.config import get_settings
+from src.db.session import get_db_session
 
 router = APIRouter(tags=["documents"])
 
@@ -52,6 +54,7 @@ async def serve_document_file(
     session: AsyncSession = Depends(get_db_session),
 ):
     from sqlalchemy import select
+
     from src.db.models import Document
     try:
         doc_uuid = uuid.UUID(doc_id)
@@ -75,6 +78,7 @@ async def update_document(
     session: AsyncSession = Depends(get_db_session),
 ):
     from sqlalchemy import select
+
     from src.db.models import Document
     try:
         doc_uuid = uuid.UUID(doc_id)
@@ -98,6 +102,7 @@ async def delete_document(
     session: AsyncSession = Depends(get_db_session),
 ):
     from sqlalchemy import select
+
     from src.db.models import Document
     try:
         doc_uuid = uuid.UUID(doc_id)
@@ -118,6 +123,7 @@ async def delete_document(
 @router.get("/documents")
 async def list_documents(session: AsyncSession = Depends(get_db_session)):
     from sqlalchemy import select
+
     from src.db.models import Document
     result = await session.execute(
         select(Document).order_by(Document.indexed_at.desc())

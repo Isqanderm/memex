@@ -1,7 +1,9 @@
 import uuid
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
-from src.db.models import Document, Chunk
+
+from src.db.models import Chunk, Document
 
 
 class DocumentRepository:

@@ -1,6 +1,7 @@
 import pytest
-from tests.mocks.mock_llm import MockLLMProvider
+
 from src.llm.protocol import LLMResponse
+from tests.mocks.mock_llm import MockLLMProvider
 
 
 @pytest.mark.asyncio

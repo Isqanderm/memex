@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+
 from src.retrieval.expand import L2Chunk
 
 

@@ -1,12 +1,14 @@
 import mimetypes
 from pathlib import Path
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.adapters.registry import AdapterRegistry
+
 from src.adapters.protocol import Source
+from src.adapters.registry import AdapterRegistry
 from src.ingestion.chunker import SmallToBigChunker
-from src.ingestion.language import LanguageDetector
 from src.ingestion.embedding import EmbeddingStage
 from src.ingestion.indexing import IndexingStage
+from src.ingestion.language import LanguageDetector
 
 
 class IngestionPipeline:

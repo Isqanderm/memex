@@ -1,8 +1,10 @@
-import pytest
 import uuid
+
+import pytest
 from sqlalchemy import text
-from src.retrieval.semantic import SemanticSearch
+
 from src.retrieval.bm25 import BM25Search
+from src.retrieval.semantic import SemanticSearch
 
 
 async def insert_test_leaf(session, content: str, language: str = "english",
@@ -57,7 +59,7 @@ async def test_bm25_returns_empty_for_no_match(db_session):
 @pytest.mark.integration
 async def test_semantic_search_returns_hits(db_session):
     vec = [0.9] * 1536
-    chunk_id = await insert_test_leaf(
+    await insert_test_leaf(
         db_session,
         "semantic search test content",
         vector=vec

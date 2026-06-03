@@ -1,4 +1,5 @@
 import re
+
 from src.adapters.protocol import Source
 from src.models.parsed import ParsedDocument, Section
 

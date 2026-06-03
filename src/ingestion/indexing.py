@@ -1,7 +1,9 @@
 import uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.repositories.document_repo import DocumentRepository
+
 from src.db.repositories.chunk_repo import ChunkRepository
+from src.db.repositories.document_repo import DocumentRepository
 from src.models.chunk import ChunkData
 from src.models.parsed import ParsedDocument
 

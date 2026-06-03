@@ -1,12 +1,14 @@
-import pytest
 import uuid
 from unittest.mock import AsyncMock, MagicMock
-from src.retrieval.service import RetrievalService, QueryResult
-from src.retrieval.semantic import SearchHit, SemanticSearch
+
+import pytest
+
 from src.retrieval.bm25 import BM25Search
+from src.retrieval.context import ContextBuilder
 from src.retrieval.expand import L2Chunk
 from src.retrieval.reranker import Reranker
-from src.retrieval.context import ContextBuilder
+from src.retrieval.semantic import SearchHit, SemanticSearch
+from src.retrieval.service import QueryResult, RetrievalService
 from tests.mocks.mock_llm import MockLLMProvider
 
 

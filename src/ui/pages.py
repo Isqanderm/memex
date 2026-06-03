@@ -1,9 +1,10 @@
 import json
-from fastapi import APIRouter, Request, Form, Depends
+
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
 from src.db.session import get_db_session
 
@@ -89,7 +90,7 @@ async def search(
     query: str = Form(...),
     session: AsyncSession = Depends(get_db_session),
 ):
-    from src.dependencies import get_retrieval_service, get_embedding_client
+    from src.dependencies import get_embedding_client, get_retrieval_service
     service = get_retrieval_service()
     client = get_embedding_client()
 
@@ -121,7 +122,7 @@ async def search_stream(
     query: str = Form(...),
     session: AsyncSession = Depends(get_db_session),
 ):
-    from src.dependencies import get_retrieval_service, get_embedding_client
+    from src.dependencies import get_embedding_client, get_retrieval_service
     service = get_retrieval_service()
     client = get_embedding_client()
 

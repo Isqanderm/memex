@@ -1,5 +1,5 @@
-from src.db.models import Base, Document, Chunk, IngestionJob
-import uuid
+from src.db.models import Chunk, Document, IngestionJob
+
 
 def test_document_tablename():
     assert Document.__tablename__ == "documents"

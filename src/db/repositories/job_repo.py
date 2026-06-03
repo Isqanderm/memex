@@ -1,6 +1,8 @@
 import uuid
+
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, text
+
 from src.db.models import IngestionJob
 
 

@@ -1,9 +1,12 @@
 import pytest
-from src.adapters.protocol import Source
+
 from src.adapters.markitdown_adapter import (
+    EPUB_MIME,
+    PPTX_MIME,
+    XLSX_MIME,
     MarkItDownAdapter,
-    PPTX_MIME, XLSX_MIME, EPUB_MIME,
 )
+from src.adapters.protocol import Source
 
 
 def test_can_handle_pptx_by_mime():
@@ -78,6 +81,7 @@ def test_parses_pptx(tmp_path):
 def test_returns_parsed_document_structure(tmp_path):
     pytest.importorskip("openpyxl")
     import openpyxl
+
     from src.models.parsed import ParsedDocument
     wb = openpyxl.Workbook()
     ws = wb.active

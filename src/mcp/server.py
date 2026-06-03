@@ -20,15 +20,15 @@ MCP Server для Memex — персистентная память для AI-а
   }
 }
 """
-import asyncio
 import os
 import tempfile
 from pathlib import Path
 
 import httpx
-from mcp.server import Server
 from mcp.server.stdio import stdio_server
+
 from mcp import types
+from mcp.server import Server
 
 BASE_URL = os.getenv("MEMEX_URL", "http://localhost:8000")
 server = Server("memex")
