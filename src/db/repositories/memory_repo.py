@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +73,7 @@ class MemoryRepository:
         # Inline vector like SemanticSearch does — SQLAlchemy text() mishandles :param::type cast
         vec_str = "[" + ",".join(str(x) for x in vector) + "]"
         category_filter = "AND category = :category" if category else ""
-        params: dict = {"threshold": threshold, "limit": limit}
+        params: dict[str, Any] = {"threshold": threshold, "limit": limit}
         if category:
             params["category"] = category
         rows = await self.session.execute(

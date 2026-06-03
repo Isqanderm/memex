@@ -1,18 +1,23 @@
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 
-def create_engine(database_url: str):
+def create_engine(database_url: str) -> AsyncEngine:
     return create_async_engine(database_url, echo=False, pool_pre_ping=True)
 
 
-def create_session_factory(engine) -> async_sessionmaker[AsyncSession]:
+def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
-_engine = None
-_session_factory = None
+_engine: AsyncEngine | None = None
+_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -21,13 +26,13 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
-async def init_db(database_url: str):
+async def init_db(database_url: str) -> None:
     global _engine, _session_factory
     _engine = create_engine(database_url)
     _session_factory = create_session_factory(_engine)
 
 
-async def close_db():
+async def close_db() -> None:
     global _engine
     if _engine:
         await _engine.dispose()

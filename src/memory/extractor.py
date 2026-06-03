@@ -58,7 +58,7 @@ class RelationResult:
     relation: str  # updates | extends | derives | new
 
 
-def _parse_json(text: str) -> dict:
+def _parse_json(text: str) -> dict[str, Any]:
     start = text.find("{")
     end = text.rfind("}") + 1
     if start == -1 or end == 0:

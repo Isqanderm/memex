@@ -1,9 +1,11 @@
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.config import get_settings
 from src.db.session import close_db, get_session_factory, init_db
@@ -17,11 +19,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logging.getLogger("memex.profile").setLevel(logging.INFO)
 
-_worker_task = None
-_expiry_task = None
+_worker_task: asyncio.Task[None] | None = None
+_expiry_task: asyncio.Task[None] | None = None
 
 
-async def _memory_expiry_loop(session_factory):
+async def _memory_expiry_loop(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     """Runs every hour: marks memories with forget_after < NOW() as inactive."""
     from src.db.repositories.memory_repo import MemoryRepository
 
@@ -39,8 +43,10 @@ async def _memory_expiry_loop(session_factory):
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _worker_task, _expiry_task
+    # Import before use — get_memory_service is referenced below before the
+    # deferred import block, causing UnboundLocalError in Python's scoping rules.
     # Import before use — get_memory_service is referenced below before the
     # deferred import block, causing UnboundLocalError in Python's scoping rules.
     from src.dependencies import get_embedding_client, get_memory_service, get_retrieval_service
@@ -87,13 +93,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Memex", version="0.1.0", lifespan=lifespan)
 
 import time as _time  # noqa: E402
+from collections.abc import Awaitable, Callable  # noqa: E402
 
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.requests import Request as _Request  # noqa: E402
+from starlette.responses import Response as _Response  # noqa: E402
 
 
 class _TimingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: _Request, call_next):
+    async def dispatch(
+        self,
+        request: _Request,
+        call_next: Callable[[_Request], Awaitable[_Response]],
+    ) -> _Response:
         t0 = _time.perf_counter()
         response = await call_next(request)
         ms = (_time.perf_counter() - t0) * 1000

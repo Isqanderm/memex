@@ -1,7 +1,8 @@
+from src.config import Settings
 from src.llm.protocol import LLMProvider
 
 
-def create_llm_provider(settings) -> LLMProvider:
+def create_llm_provider(settings: Settings) -> LLMProvider:
     if settings.llm_provider == "claude":
         from src.llm.claude import ClaudeProvider
         return ClaudeProvider(

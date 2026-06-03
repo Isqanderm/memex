@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
@@ -19,7 +20,7 @@ class Document(Base):
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     checksum: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")

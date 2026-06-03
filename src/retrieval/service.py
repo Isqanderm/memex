@@ -1,5 +1,6 @@
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import AsyncIterator
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ from src.retrieval.semantic import SemanticSearch
 @dataclass
 class QueryResult:
     answer: str
-    sources: list[dict] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -47,7 +48,7 @@ class RetrievalService:
         self,
         session: AsyncSession,
         query: str,
-        embed_fn,
+        embed_fn: Callable[[str], Awaitable[list[float]]],
         memory_search: "MemorySearch | None" = None,
         memory_category: str | None = None,
     ) -> QueryResult:
@@ -89,9 +90,9 @@ class RetrievalService:
         self,
         session: AsyncSession,
         query: str,
-        embed_fn,
+        embed_fn: Callable[[str], Awaitable[list[float]]],
         top_k: int = 5,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         from pathlib import Path
         query_vector = await embed_fn(query)
         semantic_hits = await self.semantic_search.search(session, query_vector)
@@ -115,10 +116,10 @@ class RetrievalService:
         self,
         session: AsyncSession,
         query: str,
-        embed_fn,
+        embed_fn: Callable[[str], Awaitable[list[float]]],
         memory_search: "MemorySearch | None" = None,
         memory_category: str | None = None,
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[dict[str, Any]]:
         t = StepTimer("stream")
 
         with t.step("embed"):

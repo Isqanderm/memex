@@ -1,6 +1,7 @@
 import hashlib
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -25,7 +26,7 @@ class UploadResponse(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> UploadResponse:
     settings = get_settings()
     content = await file.read()
     checksum = hashlib.sha256(content).hexdigest()
@@ -52,7 +53,7 @@ async def upload_document(
 async def serve_document_file(
     doc_id: str,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> FileResponse:
     from sqlalchemy import select
 
     from src.db.models import Document
@@ -74,9 +75,9 @@ async def serve_document_file(
 @router.patch("/documents/{doc_id}")
 async def update_document(
     doc_id: str,
-    body: dict,
+    body: dict[str, Any],
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     from sqlalchemy import select
 
     from src.db.models import Document
@@ -100,7 +101,7 @@ async def update_document(
 async def delete_document(
     doc_id: str,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> None:
     from sqlalchemy import select
 
     from src.db.models import Document
@@ -121,7 +122,9 @@ async def delete_document(
 
 
 @router.get("/documents")
-async def list_documents(session: AsyncSession = Depends(get_db_session)):
+async def list_documents(
+    session: AsyncSession = Depends(get_db_session),
+) -> list[dict[str, Any]]:
     from sqlalchemy import select
 
     from src.db.models import Document

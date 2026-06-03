@@ -1,6 +1,7 @@
 import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from src.retrieval.expand import L2Chunk
 from src.retrieval.memory_search import MemoryHit
@@ -9,7 +10,7 @@ from src.retrieval.memory_search import MemoryHit
 @dataclass
 class QueryContext:
     prompt: str
-    sources: list[dict] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
 
 
 # Kept for A/B benchmarking — do not delete

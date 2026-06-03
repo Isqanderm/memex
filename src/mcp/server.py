@@ -25,6 +25,7 @@ MCP Server для Memex — персистентная память для AI-а
 """
 import os
 from pathlib import Path
+from typing import Any
 
 import httpx
 from mcp.server.stdio import stdio_server
@@ -36,7 +37,7 @@ BASE_URL = os.getenv("MEMEX_URL", "http://localhost:8000")
 server = Server("memex")
 
 # In-memory cache: job_id → {title, tags} — used to set metadata after async indexing
-_pending_metadata: dict[str, dict] = {}
+_pending_metadata: dict[str, dict[str, Any]] = {}
 
 
 # ── Tool definitions ─────────────────────────────────────────────────────────
@@ -182,7 +183,7 @@ async def list_tools() -> list[types.Tool]:
 # ── Tool implementations ─────────────────────────────────────────────────────
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     async with httpx.AsyncClient(timeout=60.0) as client:
         if name == "remember":
             return await _remember(client, arguments)
@@ -210,7 +211,7 @@ def _text(s: str) -> list[types.TextContent]:
     return [types.TextContent(type="text", text=s)]
 
 
-async def _remember(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+async def _remember(client: httpx.AsyncClient, args: dict[str, Any]) -> list[types.TextContent]:
     content = args["content"]
     resp = await client.post(
         f"{BASE_URL}/api/memory/remember",
@@ -241,7 +242,7 @@ async def _context(client: httpx.AsyncClient) -> list[types.TextContent]:
     return _text("\n".join(lines))
 
 
-async def _observe(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+async def _observe(client: httpx.AsyncClient, args: dict[str, Any]) -> list[types.TextContent]:
     conversation = args["conversation"]
     resp = await client.post(
         f"{BASE_URL}/api/memory/observe",
@@ -273,7 +274,7 @@ async def _memories(client: httpx.AsyncClient) -> list[types.TextContent]:
     return _text(f"Active memories: {len(mems)}\n\n" + "\n\n".join(lines))
 
 
-async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+async def _recall(client: httpx.AsyncClient, args: dict[str, Any]) -> list[types.TextContent]:
     query = args["query"]
     raw = args.get("raw", False)
     category = args.get("category")
@@ -303,7 +304,7 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
             lines.append(f"[{i}] {name}{section}{page}\n{c['text']}\n")
         return _text("\n".join(lines))
     else:
-        payload: dict = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         if category:
             payload["memory_category"] = category
         resp = await client.post(
@@ -330,7 +331,7 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
         return _text(answer)
 
 
-async def _index_file(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+async def _index_file(client: httpx.AsyncClient, args: dict[str, Any]) -> list[types.TextContent]:
     path = args["path"]
     tags = args.get("tags", [])
     try:
@@ -366,7 +367,7 @@ async def _index_file(client: httpx.AsyncClient, args: dict) -> list[types.TextC
     return _text(f"Неожиданный ответ: {data}")
 
 
-async def _check_indexing(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+async def _check_indexing(client: httpx.AsyncClient, args: dict[str, Any]) -> list[types.TextContent]:
     job_id = args["job_id"]
     try:
         resp = await client.get(f"{BASE_URL}/api/jobs/{job_id}")
@@ -381,7 +382,7 @@ async def _check_indexing(client: httpx.AsyncClient, args: dict) -> list[types.T
     # On first "done", apply cached title/tags
     if status == "done" and doc_id and job_id in _pending_metadata:
         meta = _pending_metadata.pop(job_id)
-        patch_body: dict = {}
+        patch_body: dict[str, Any] = {}
         if "title" in meta:
             patch_body["title"] = meta["title"]
         if "tags" in meta:
@@ -420,7 +421,7 @@ async def _list_memories(client: httpx.AsyncClient) -> list[types.TextContent]:
     return _text(f"Документов в базе: {len(docs)}\n\n" + "\n\n".join(lines))
 
 
-async def _forget(client: httpx.AsyncClient, args: dict) -> list[types.TextContent]:
+async def _forget(client: httpx.AsyncClient, args: dict[str, Any]) -> list[types.TextContent]:
     doc_id = args["doc_id"]
     # Try memory endpoint first
     resp = await client.delete(f"{BASE_URL}/api/memory/{doc_id}")
@@ -437,7 +438,7 @@ async def _forget(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 
-async def main():
+async def main() -> None:
     async with stdio_server() as streams:
         read_stream, write_stream = streams
         await server.run(read_stream, write_stream, server.create_initialization_options())

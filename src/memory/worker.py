@@ -1,8 +1,12 @@
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import MemoryExtractionJob
+
+if TYPE_CHECKING:
+    from src.memory.service import MemoryService
 
 
 async def queue_document_extraction(session: AsyncSession, doc_id: str) -> MemoryExtractionJob:
@@ -22,7 +26,7 @@ async def run_document_extraction(
     session: AsyncSession,
     job: MemoryExtractionJob,
     doc_text: str,
-    memory_service,
+    memory_service: "MemoryService",
 ) -> None:
     job.status = "processing"
     await session.flush()

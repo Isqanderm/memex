@@ -14,6 +14,7 @@ class LanguageDetector:
             return "simple"
         try:
             from typing import cast
+
             from langdetect import detect
             return cast(str, detect(text))
         except Exception:

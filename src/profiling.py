@@ -11,6 +11,7 @@ Usage in code:
 import logging
 import os
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 ENABLED = os.getenv("MEMEX_PROFILE", "0") == "1"
@@ -18,13 +19,13 @@ logger = logging.getLogger("memex.profile")
 
 
 class StepTimer:
-    def __init__(self, label: str):
+    def __init__(self, label: str) -> None:
         self.label = label
         self._steps: list[tuple[str, float]] = []
         self._start = time.perf_counter()
 
     @contextmanager
-    def step(self, name: str):
+    def step(self, name: str) -> Iterator[None]:
         t0 = time.perf_counter()
         try:
             yield
@@ -34,7 +35,7 @@ class StepTimer:
     def total_ms(self) -> float:
         return (time.perf_counter() - self._start) * 1000
 
-    def log(self):
+    def log(self) -> None:
         if not ENABLED:
             return
         total = self.total_ms()

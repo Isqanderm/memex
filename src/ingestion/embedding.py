@@ -39,7 +39,7 @@ class LocalEmbeddingClient:
 
 
 class EmbeddingStage:
-    def __init__(self, client, batch_size: int = 512):
+    def __init__(self, client: LocalEmbeddingClient, batch_size: int = 512):
         self.client = client
         self.batch_size = batch_size
 

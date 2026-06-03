@@ -1,5 +1,5 @@
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ class ObserveRequest(BaseModel):
 async def remember(
     body: RememberRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     service = get_memory_service(session)
     result = await service.remember(session, body.content, source=body.source)
     await session.commit()
@@ -35,7 +35,7 @@ async def remember(
 async def observe(
     body: ObserveRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     service = get_memory_service(session)
     result = await service.observe(session, body.conversation)
     await session.commit()
@@ -46,7 +46,7 @@ async def observe(
 async def list_memories(
     session: AsyncSession = Depends(get_db_session),
     category: Literal["research", "reminder", "insight", "decision", "preference"] | None = Query(default=None),
-):
+) -> list[dict[str, Any]]:
     service = get_memory_service(session)
     memories = await service.list_active(session, category=category)
     return [
@@ -66,7 +66,7 @@ async def list_memories(
 @router.get("/context")
 async def context(
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     service = get_memory_service(session)
     profile_service = get_profile_service_instance()
     memories = await service.list_active(session)
@@ -78,7 +78,7 @@ async def context(
 async def forget_memory(
     memory_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     service = get_memory_service(session)
     ok = await service.forget_memory(session, memory_id)
     await session.commit()

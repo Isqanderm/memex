@@ -1,11 +1,12 @@
 import json
-from typing import cast
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
 from src.db.session import get_db_session
 
@@ -20,7 +21,7 @@ async def _doc_count(session: AsyncSession) -> int:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request, session: AsyncSession = Depends(get_db_session)):
+async def index(request: Request, session: AsyncSession = Depends(get_db_session)) -> Response:
     count = await _doc_count(session)
     return templates.TemplateResponse(
         request, "index.html", {"active_page": "search", "doc_count": count}
@@ -31,7 +32,7 @@ async def index(request: Request, session: AsyncSession = Depends(get_db_session
 async def documents_page(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> Response:
     from src.db.models import Document, IngestionJob
     docs_result = await session.execute(
         select(Document).order_by(Document.indexed_at.desc())
@@ -61,7 +62,7 @@ async def documents_page(
 async def upload_page(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> Response:
     count = await _doc_count(session)
     return templates.TemplateResponse(
         request, "upload.html", {"active_page": "upload", "doc_count": count}
@@ -72,7 +73,7 @@ async def upload_page(
 async def jobs_fragment(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> Response:
     from src.db.models import IngestionJob
     jobs_result = await session.execute(
         select(IngestionJob)
@@ -90,13 +91,13 @@ async def search(
     request: Request,
     query: str = Form(...),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> Response:
     from src.dependencies import get_embedding_client, get_retrieval_service
     service = get_retrieval_service()
     client = get_embedding_client()
 
     async def embed(text: str) -> list[float]:
-        return cast(list[float], (await client.embed_batch([text]))[0])
+        return (await client.embed_batch([text]))[0]
 
     try:
         result = await service.query(session, query, embed_fn=embed)
@@ -122,7 +123,7 @@ async def search(
 async def search_stream(
     query: str = Form(...),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> Response:
     from src.db.repositories.memory_repo import MemoryRepository
     from src.dependencies import get_embedding_client, get_retrieval_service
     from src.retrieval.memory_search import MemorySearch
@@ -131,9 +132,9 @@ async def search_stream(
     memory_search = MemorySearch(repo=MemoryRepository(session))
 
     async def embed(text: str) -> list[float]:
-        return cast(list[float], (await client.embed_batch([text], is_query=True))[0])
+        return (await client.embed_batch([text], is_query=True))[0]
 
-    async def generate():
+    async def generate() -> AsyncGenerator[str, None]:
         try:
             async for event in service.query_stream(session, query, embed_fn=embed, memory_search=memory_search):
                 if event["type"] == "token":
