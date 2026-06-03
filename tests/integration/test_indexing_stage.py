@@ -1,9 +1,11 @@
-import pytest
 import uuid
+
+import pytest
 from sqlalchemy import text
+
 from src.ingestion.indexing import IndexingStage
-from src.models.parsed import ParsedDocument, Section
 from src.models.chunk import ChunkData
+from src.models.parsed import ParsedDocument, Section
 
 
 @pytest.mark.integration

@@ -1,6 +1,8 @@
 import asyncio
 import logging
+
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
 from src.db.repositories.job_repo import JobRepository
 from src.ingestion.pipeline import IngestionPipeline
 
@@ -38,6 +40,7 @@ class IngestionWorker:
 
     async def _extract_memory(self, session, doc_id) -> None:
         from sqlalchemy import select
+
         from src.db.models import Chunk
         from src.memory.worker import queue_document_extraction, run_document_extraction
 

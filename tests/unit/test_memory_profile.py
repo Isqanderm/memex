@@ -1,9 +1,10 @@
 import uuid
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from unittest.mock import AsyncMock
-from datetime import datetime, timezone, timedelta
-from src.memory.profile import ProfileService, UserProfile
+
 from src.db.models import Memory
+from src.memory.profile import ProfileService, UserProfile
 from tests.mocks.mock_llm import MockLLMProvider
 
 

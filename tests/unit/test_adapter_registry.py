@@ -1,6 +1,7 @@
 import pytest
-from src.adapters.registry import AdapterRegistry
+
 from src.adapters.protocol import Source
+from src.adapters.registry import AdapterRegistry
 from src.models.parsed import ParsedDocument, Section
 
 

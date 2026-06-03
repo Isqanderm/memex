@@ -1,17 +1,18 @@
-import pytest
 import uuid
-from pathlib import Path
+
+import pytest
 from sqlalchemy import select
-from src.ingestion.worker import IngestionWorker
-from src.ingestion.pipeline import IngestionPipeline
+
 from src.adapters.registry import AdapterRegistry
 from src.adapters.text import TextAdapter
+from src.db.models import IngestionJob
+from src.db.repositories.job_repo import JobRepository
 from src.ingestion.chunker import SmallToBigChunker
-from src.ingestion.language import LanguageDetector
 from src.ingestion.embedding import EmbeddingStage
 from src.ingestion.indexing import IndexingStage
-from src.db.repositories.job_repo import JobRepository
-from src.db.models import IngestionJob
+from src.ingestion.language import LanguageDetector
+from src.ingestion.pipeline import IngestionPipeline
+from src.ingestion.worker import IngestionWorker
 from tests.mocks.mock_embedding import MockEmbeddingClient
 
 

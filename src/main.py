@@ -1,12 +1,14 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from src.db.session import init_db, close_db, get_session_factory
-from src.ingestion.worker import IngestionWorker
-from src.dependencies import get_ingestion_pipeline
+
 from src.config import get_settings
+from src.db.session import close_db, get_session_factory, init_db
+from src.dependencies import get_ingestion_pipeline
+from src.ingestion.worker import IngestionWorker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +43,7 @@ async def lifespan(app: FastAPI):
     global _worker_task, _expiry_task
     # Import before use — get_memory_service is referenced below before the
     # deferred import block, causing UnboundLocalError in Python's scoping rules.
-    from src.dependencies import get_retrieval_service, get_embedding_client, get_memory_service
+    from src.dependencies import get_embedding_client, get_memory_service, get_retrieval_service
 
     settings = get_settings()
     await init_db(settings.database_url)
@@ -84,9 +86,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Memex", version="0.1.0", lifespan=lifespan)
 
-import time as _time
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as _Request
+import time as _time  # noqa: E402
+
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.requests import Request as _Request  # noqa: E402
+
 
 class _TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: _Request, call_next):
@@ -103,12 +107,11 @@ try:
 except Exception:
     pass  # static dir may not exist yet
 
-# Routers will be imported below
-from src.api import documents as docs_router
-from src.api import query as query_router
-from src.api import jobs as jobs_router
-from src.ui import pages as ui_router
-from src.api.memories import router as memory_router
+from src.api import documents as docs_router  # noqa: E402
+from src.api import jobs as jobs_router  # noqa: E402
+from src.api import query as query_router  # noqa: E402
+from src.api.memories import router as memory_router  # noqa: E402
+from src.ui import pages as ui_router  # noqa: E402
 
 app.include_router(docs_router.router, prefix="/api")
 app.include_router(query_router.router, prefix="/api")

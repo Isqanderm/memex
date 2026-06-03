@@ -1,8 +1,14 @@
-import pytest
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from src.db.models import Memory
-from src.memory.extractor import ExtractedFact
+from src.db.repositories.memory_repo import MemoryRepository
+from src.memory.extractor import ExtractedFact, FactExtractor
+from src.memory.service import MemoryService
+from src.retrieval.memory_search import MemorySearch
 
 
 def test_memory_model_has_category_and_project():
@@ -21,9 +27,6 @@ def test_extracted_fact_accepts_category():
     f = ExtractedFact(content="User works at Acme", category="decision", project="work")
     assert f.category == "decision"
     assert f.project == "work"
-
-
-from src.db.repositories.memory_repo import MemoryRepository
 
 
 def make_memory(category=None, project=None):
@@ -74,10 +77,6 @@ async def test_repo_get_all_active_filters_by_category():
     assert results[0].category == "research"
 
 
-from src.memory.service import MemoryService
-from src.memory.extractor import FactExtractor
-
-
 @pytest.mark.asyncio
 async def test_service_remember_passes_category_to_repo():
     repo = MagicMock()
@@ -97,10 +96,6 @@ async def test_service_remember_passes_category_to_repo():
     call_kwargs = repo.create.call_args.kwargs
     assert call_kwargs["category"] == "decision"
     assert call_kwargs["project"] == "Memex"
-
-
-from src.retrieval.memory_search import MemorySearch, MemoryHit
-from datetime import datetime, timezone
 
 
 @pytest.mark.asyncio

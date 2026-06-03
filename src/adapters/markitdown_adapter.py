@@ -1,5 +1,5 @@
-from src.adapters.protocol import Source
 from src.adapters.markdown import MarkdownAdapter
+from src.adapters.protocol import Source
 from src.models.parsed import ParsedDocument, Section
 
 PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"

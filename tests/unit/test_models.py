@@ -1,5 +1,6 @@
-from src.models.parsed import ParsedDocument, Section
 from src.models.chunk import ChunkData
+from src.models.parsed import ParsedDocument, Section
+
 
 def test_parsed_document_sections():
     doc = ParsedDocument(

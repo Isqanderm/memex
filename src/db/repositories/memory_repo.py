@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.db.models import Memory
 
 
@@ -48,7 +50,7 @@ class MemoryRepository:
             await self.session.flush()
 
     async def get_all_active(self, category: str | None = None) -> list[Memory]:
-        q = select(Memory).where(Memory.is_active == True)
+        q = select(Memory).where(Memory.is_active)
         if category:
             q = q.where(Memory.category == category)
         result = await self.session.execute(q.order_by(Memory.created_at.desc()))

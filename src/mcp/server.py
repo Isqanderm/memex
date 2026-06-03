@@ -23,14 +23,14 @@ MCP Server для Memex — персистентная память для AI-а
   }
 }
 """
-import asyncio
 import os
 from pathlib import Path
 
 import httpx
-from mcp.server import Server
 from mcp.server.stdio import stdio_server
+
 from mcp import types
+from mcp.server import Server
 
 BASE_URL = os.getenv("MEMEX_URL", "http://localhost:8000")
 server = Server("memex")
@@ -281,9 +281,9 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
     if raw:
         if category:
             return _text(
-                f"Note: category filter is not supported in raw=True mode "
-                f"(raw mode searches document chunks, not memory facts). "
-                f"Use raw=False to filter memories by category."
+                "Note: category filter is not supported in raw=True mode "
+                "(raw mode searches document chunks, not memory facts). "
+                "Use raw=False to filter memories by category."
             )
         top_k = args.get("top_k", 5)
         resp = await client.post(

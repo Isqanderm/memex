@@ -2,6 +2,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+
 from src.llm.protocol import LLMProvider
 
 EXTRACT_PROMPT = """\

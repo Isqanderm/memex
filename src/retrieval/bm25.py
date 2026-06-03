@@ -1,8 +1,8 @@
-import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from src.retrieval.semantic import SearchHit
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.ingestion.language import LanguageDetector
+from src.retrieval.semantic import SearchHit
 
 
 class BM25Search:

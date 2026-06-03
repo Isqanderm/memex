@@ -1,6 +1,8 @@
 import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models.chunk import ChunkData
 
 

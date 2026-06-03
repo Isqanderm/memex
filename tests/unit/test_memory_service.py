@@ -1,10 +1,12 @@
 import uuid
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from src.memory.service import MemoryService, RememberResult
-from src.memory.extractor import ExtractedFact, RelationResult, FactExtractor
-from src.db.repositories.memory_repo import MemoryRepository
+
+import pytest
+
 from src.db.models import Memory
+from src.db.repositories.memory_repo import MemoryRepository
+from src.memory.extractor import ExtractedFact, FactExtractor, RelationResult
+from src.memory.service import MemoryService, RememberResult
 
 
 def make_memory(content="User works at Acme"):
@@ -104,8 +106,8 @@ async def test_memory_worker_queues_job_after_doc_indexing():
 @pytest.mark.asyncio
 async def test_ingestion_worker_calls_memory_factory_on_success():
     """IngestionWorker calls memory_service_factory after successful indexing."""
+
     from src.ingestion.worker import IngestionWorker
-    from sqlalchemy.ext.asyncio import async_sessionmaker
 
     doc_id = uuid.uuid4()
     pipeline = MagicMock()

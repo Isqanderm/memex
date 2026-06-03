@@ -16,8 +16,8 @@ Success criteria (v2 should be better or equal on all categories):
 """
 import json
 import os
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
 import openai
 

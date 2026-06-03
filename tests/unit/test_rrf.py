@@ -1,4 +1,5 @@
 import uuid
+
 from src.retrieval.rrf import rrf_merge
 from src.retrieval.semantic import SearchHit
 

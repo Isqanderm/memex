@@ -1,27 +1,29 @@
 from functools import lru_cache
-from src.config import get_settings
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.adapters.docx import DocxAdapter
+from src.adapters.markdown import MarkdownAdapter
+from src.adapters.markitdown_adapter import MarkItDownAdapter
+from src.adapters.pdf import PdfAdapter
 from src.adapters.registry import AdapterRegistry
 from src.adapters.text import TextAdapter
-from src.adapters.markdown import MarkdownAdapter
-from src.adapters.pdf import PdfAdapter
-from src.adapters.docx import DocxAdapter
-from src.adapters.markitdown_adapter import MarkItDownAdapter
+from src.config import get_settings
+from src.db.repositories.memory_repo import MemoryRepository
 from src.ingestion.chunker import SmallToBigChunker
-from src.ingestion.language import LanguageDetector
 from src.ingestion.embedding import EmbeddingStage, LocalEmbeddingClient
 from src.ingestion.indexing import IndexingStage
+from src.ingestion.language import LanguageDetector
 from src.ingestion.pipeline import IngestionPipeline
-from src.retrieval.semantic import SemanticSearch
-from src.retrieval.bm25 import BM25Search
-from src.retrieval.reranker import Reranker
-from src.retrieval.context import ContextBuilder
-from src.retrieval.service import RetrievalService
 from src.llm.factory import create_llm_provider
 from src.memory.extractor import FactExtractor
-from src.memory.service import MemoryService
 from src.memory.profile import ProfileService
-from src.db.repositories.memory_repo import MemoryRepository
-from sqlalchemy.ext.asyncio import AsyncSession
+from src.memory.service import MemoryService
+from src.retrieval.bm25 import BM25Search
+from src.retrieval.context import ContextBuilder
+from src.retrieval.reranker import Reranker
+from src.retrieval.semantic import SemanticSearch
+from src.retrieval.service import RetrievalService
 
 
 @lru_cache

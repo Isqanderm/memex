@@ -1,8 +1,6 @@
-import pytest
-from pathlib import Path
+from src.adapters.markdown import MarkdownAdapter
 from src.adapters.protocol import Source
 from src.adapters.text import TextAdapter
-from src.adapters.markdown import MarkdownAdapter
 
 
 def test_text_can_handle_txt():

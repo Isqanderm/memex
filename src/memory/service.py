@@ -1,9 +1,11 @@
 import uuid
 from dataclasses import dataclass
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.memory.extractor import FactExtractor
-from src.db.repositories.memory_repo import MemoryRepository
+
 from src.db.models import Memory
+from src.db.repositories.memory_repo import MemoryRepository
+from src.memory.extractor import FactExtractor
 
 
 @dataclass

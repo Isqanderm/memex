@@ -1,6 +1,5 @@
-import pytest
-from src.adapters.protocol import Source
 from src.adapters.pdf import PdfAdapter
+from src.adapters.protocol import Source
 
 
 def test_pdf_can_handle():

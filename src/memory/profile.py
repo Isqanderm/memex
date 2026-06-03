@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from src.llm.protocol import LLMProvider
+from datetime import datetime, timedelta, timezone
+
 from src.db.models import Memory
+from src.llm.protocol import LLMProvider
 
 STATIC_THRESHOLD_DAYS = 30
 

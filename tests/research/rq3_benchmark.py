@@ -11,11 +11,9 @@ Success criteria:
     context()  p95 latency  < 2000ms
 """
 import asyncio
-import json
 import os
 import statistics
 import time
-from pathlib import Path
 
 import httpx
 

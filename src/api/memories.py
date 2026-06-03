@@ -4,6 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.api.documents import get_db_session
 from src.dependencies import get_memory_service, get_profile_service_instance
 

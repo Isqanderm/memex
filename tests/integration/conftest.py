@@ -1,8 +1,9 @@
 import os
+
 import pytest
 import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 PG_IMAGE = "pgvector/pgvector:pg15"
 
@@ -36,7 +37,9 @@ def sync_db_url(pg_container):
 @pytest.fixture(scope="session", autouse=True)
 def apply_migrations(sync_db_url):
     import os
+
     from alembic.config import Config
+
     from alembic import command
     os.environ["DATABASE_URL"] = sync_db_url
     cfg = Config("alembic.ini")

@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+
 from src.config import Settings
 
 # pydantic-settings reads OS env vars even when _env_file=None.
