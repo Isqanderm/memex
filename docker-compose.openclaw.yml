@@ -1,0 +1,32 @@
+# OpenClaw integration overlay.
+# Usage (production — pre-built image):
+#   OPENCLAW_NETWORK=<your_openclaw_network> \
+#     docker compose -f docker-compose.prod.yml -f docker-compose.openclaw.yml up -d
+#
+# Usage (development — local build):
+#   OPENCLAW_NETWORK=<your_openclaw_network> \
+#     docker compose -f docker-compose.yml -f docker-compose.openclaw.yml up -d
+#
+# Find your OpenClaw network name:
+#   docker network ls | grep openclaw
+#
+# Requires Docker Compose 2.24+ (for !reset tag).
+
+services:
+  memex:
+    ports: !reset []
+    networks:
+      - openclaw-net
+      - internal
+
+  postgres:
+    ports: !reset []
+    networks:
+      - internal
+
+networks:
+  openclaw-net:
+    external: true
+    name: "${OPENCLAW_NETWORK:-openclaw_default}"
+  internal:
+    internal: true

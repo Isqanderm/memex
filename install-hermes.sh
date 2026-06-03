@@ -182,6 +182,9 @@ done
 
 # ── 6. Install MCP bridge ─────────────────────────────────────────────────────
 step "Installing MCP bridge..."
+docker exec "$HERMES_CONTAINER" mkdir -p /opt/data/shared
+docker exec "$HERMES_CONTAINER" curl -sSf \
+  "$REPO_RAW/shared/memex-bridge.py" -o /opt/data/shared/memex-bridge.py
 docker exec "$HERMES_CONTAINER" curl -sSf \
   "$REPO_RAW/hermes/memex-bridge.py" -o /opt/data/memex-bridge.py
 ok "Bridge installed at /opt/data/memex-bridge.py"
