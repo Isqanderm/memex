@@ -14,7 +14,7 @@ router = APIRouter(tags=["query"])
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 5
-    memory_category: Literal["research", "reminder", "thought", "decision", "preference"] | None = None
+    memory_category: Literal["research", "reminder", "insight", "decision", "preference"] | None = None
 
 
 class QueryResponse(BaseModel):

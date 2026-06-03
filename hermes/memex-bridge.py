@@ -76,7 +76,7 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "category": {
                         "type": "string",
-                        "enum": ["research", "reminder", "thought", "decision", "preference"],
+                        "enum": ["research", "reminder", "insight", "decision", "preference"],
                         "description": "Filter memories by category (optional)",
                     },
                 },
@@ -225,6 +225,12 @@ async def _recall(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
     category = args.get("category")
 
     if raw:
+        if category:
+            return _text(
+                "Note: category filter is not supported in raw=True mode "
+                "(raw mode searches document chunks, not memory facts). "
+                "Use raw=False to filter memories by category."
+            )
         top_k = args.get("top_k", 5)
         resp = await client.post(f"{BASE_URL}/api/search/chunks", json={"query": query, "top_k": top_k})
         if resp.status_code != 200:

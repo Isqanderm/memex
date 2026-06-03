@@ -70,6 +70,7 @@ Arguments:
 - `query` (required) — question or topic in the same language as stored content
 - `raw` (default false) — false = LLM answer; true = raw chunks (faster/cheaper)
 - `top_k` (default 5) — used only when raw=true
+- `category` (optional) — filter memory search: `research` | `reminder` | `decision` | `preference` | `insight`. Only applies when raw=false.
 
 Personal memory facts are automatically included in the response alongside document chunks.
 

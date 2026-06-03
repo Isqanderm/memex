@@ -13,7 +13,12 @@ Rules:
 - Normalize state: prefer "User uses X" over "User switched from Y to X".
 - Time-bound facts (meetings, trips, deadlines) ARE included — add "forget_after" as an ISO datetime for them.
 - For permanent facts, omit "forget_after".
-- Set "category" to one of: research, reminder, thought, decision, preference. Omit if none fits.
+- Set "category" to the closest fit, or omit if unclear:
+    research   — findings from investigation ("e5-small has 384 dims", "Postgres is faster here")
+    reminder   — tasks and upcoming events ("Review PR by Friday", "Meeting at 3pm tomorrow")
+    decision   — concluded choices ("Decided to use TypeScript", "Chose PostgreSQL over MongoDB")
+    preference — stable personal settings ("Prefers dark mode", "Uses Python for backend")
+    insight    — ideas and observations worth noting ("Async queue scales better than polling")
 - Set "project" to the project/context name if the fact belongs to one (e.g. "Memex", "work", "personal"). Omit if unclear.
 
 Text: {text}
@@ -41,7 +46,7 @@ Return JSON only:
 class ExtractedFact:
     content: str
     forget_after: datetime | None = None
-    category: str | None = None   # research|reminder|thought|decision|preference
+    category: str | None = None   # research|reminder|insight|decision|preference
     project: str | None = None
 
 
@@ -59,7 +64,7 @@ def _parse_json(text: str) -> dict:
     return json.loads(text[start:end])
 
 
-_VALID_CATEGORIES = frozenset({"research", "reminder", "thought", "decision", "preference"})
+_VALID_CATEGORIES = frozenset({"research", "reminder", "insight", "decision", "preference"})
 
 
 class FactExtractor:

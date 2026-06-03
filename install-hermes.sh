@@ -57,11 +57,14 @@ ok "curl available"
 
 # ── 1. LLM API key ───────────────────────────────────────────────────────────
 # Embeddings are local (sentence-transformers) — no OpenAI key needed for them.
-if [ -z "${OPENAI_LLM_API_KEY:-}" ]; then
-  read -rsp "OpenAI LLM API key (for GPT-4o): " OPENAI_LLM_API_KEY
+# LLM supports OpenAI (default) or Anthropic Claude.
+if [ -z "${OPENAI_LLM_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  read -rsp "OpenAI LLM API key (press Enter to use Anthropic/Claude instead): " OPENAI_LLM_API_KEY
   echo
 fi
-[ -z "${OPENAI_LLM_API_KEY:-}" ] && die "OPENAI_LLM_API_KEY is required"
+if [ -z "${OPENAI_LLM_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  die "Set OPENAI_LLM_API_KEY (OpenAI) or ANTHROPIC_API_KEY (Claude) for the LLM provider"
+fi
 
 # ── 2. Auto-detect Hermes ─────────────────────────────────────────────────────
 step "Detecting Hermes..."
@@ -135,12 +138,21 @@ else
 
   if [ ! -f .env ]; then
     POSTGRES_PASSWORD=$(openssl rand -hex 16)
+    if [ -n "${OPENAI_LLM_API_KEY:-}" ]; then
+      LLM_PROVIDER_VAL=openai
+      LLM_MODEL_VAL=gpt-4o-mini
+      LLM_KEY_LINE="OPENAI_LLM_API_KEY=${OPENAI_LLM_API_KEY}"
+    else
+      LLM_PROVIDER_VAL=claude
+      LLM_MODEL_VAL=claude-haiku-4-5
+      LLM_KEY_LINE="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
+    fi
     cat > .env <<EOF
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=postgresql+asyncpg://memex:${POSTGRES_PASSWORD}@memex-db:5432/memex
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
-OPENAI_LLM_API_KEY=${OPENAI_LLM_API_KEY}
+LLM_PROVIDER=${LLM_PROVIDER_VAL}
+LLM_MODEL=${LLM_MODEL_VAL}
+${LLM_KEY_LINE}
 UPLOAD_DIR=data/uploads
 EOF
     chmod 600 .env

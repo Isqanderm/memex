@@ -44,7 +44,7 @@ async def observe(
 @router.get("/list")
 async def list_memories(
     session: AsyncSession = Depends(get_db_session),
-    category: Literal["research", "reminder", "thought", "decision", "preference"] | None = Query(default=None),
+    category: Literal["research", "reminder", "insight", "decision", "preference"] | None = Query(default=None),
 ):
     service = get_memory_service(session)
     memories = await service.list_active(session, category=category)
