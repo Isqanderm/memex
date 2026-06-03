@@ -47,8 +47,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _worker_task, _expiry_task
     # Import before use — get_memory_service is referenced below before the
     # deferred import block, causing UnboundLocalError in Python's scoping rules.
-    # Import before use — get_memory_service is referenced below before the
-    # deferred import block, causing UnboundLocalError in Python's scoping rules.
     from src.dependencies import get_embedding_client, get_memory_service, get_retrieval_service
 
     settings = get_settings()
