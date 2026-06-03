@@ -1,4 +1,5 @@
 import json
+from typing import cast
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -95,7 +96,7 @@ async def search(
     client = get_embedding_client()
 
     async def embed(text: str) -> list[float]:
-        return (await client.embed_batch([text]))[0]
+        return cast(list[float], (await client.embed_batch([text]))[0])
 
     try:
         result = await service.query(session, query, embed_fn=embed)
@@ -130,7 +131,7 @@ async def search_stream(
     memory_search = MemorySearch(repo=MemoryRepository(session))
 
     async def embed(text: str) -> list[float]:
-        return (await client.embed_batch([text], is_query=True))[0]
+        return cast(list[float], (await client.embed_batch([text], is_query=True))[0])
 
     async def generate():
         try:

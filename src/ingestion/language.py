@@ -13,8 +13,9 @@ class LanguageDetector:
         if len(text.strip()) < 20:
             return "simple"
         try:
+            from typing import cast
             from langdetect import detect
-            return detect(text)
+            return cast(str, detect(text))
         except Exception:
             return "simple"
 

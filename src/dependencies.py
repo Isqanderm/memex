@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,7 +91,7 @@ def get_memory_service(session: AsyncSession) -> MemoryService:
 
     async def embed_fn(text: str) -> list[float]:
         results = await embedding_client.embed_batch([text])
-        return results[0]
+        return cast(list[float], results[0])
 
     return MemoryService(
         repo=MemoryRepository(session),

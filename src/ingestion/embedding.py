@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from src.models.chunk import ChunkData
 
 
@@ -13,7 +15,7 @@ class LocalEmbeddingClient:
     def __init__(self, model: str = "intfloat/multilingual-e5-small"):
         self.model_name = model
 
-    def _get_model(self):
+    def _get_model(self) -> Any:
         if LocalEmbeddingClient._model is None or LocalEmbeddingClient._model_name != self.model_name:
             from sentence_transformers import SentenceTransformer
             LocalEmbeddingClient._model = SentenceTransformer(self.model_name)
@@ -29,11 +31,11 @@ class LocalEmbeddingClient:
             None,
             lambda: self._get_model().encode(prefixed, normalize_embeddings=True).tolist(),
         )
-        return embeddings
+        return cast(list[list[float]], embeddings)
 
     @property
     def dimensions(self) -> int:
-        return self._get_model().get_sentence_embedding_dimension()
+        return cast(int, self._get_model().get_sentence_embedding_dimension())
 
 
 class EmbeddingStage:

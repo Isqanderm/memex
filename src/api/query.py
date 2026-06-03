@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -33,7 +33,7 @@ async def query_documents(
 
     async def embed(text: str) -> list[float]:
         results = await embedding_client.embed_batch([text], is_query=True)
-        return results[0]
+        return cast(list[float], results[0])
 
     # Create per-request memory search with session-scoped repository
     memory_search = MemorySearch(repo=MemoryRepository(session))
@@ -61,7 +61,7 @@ async def search_chunks(
 
     async def embed(text: str) -> list[float]:
         results = await embedding_client.embed_batch([text], is_query=True)
-        return results[0]
+        return cast(list[float], results[0])
 
     chunks = await service.search_chunks(session, request.query, embed_fn=embed, top_k=request.top_k)
     return {"chunks": chunks}
