@@ -39,6 +39,10 @@ async def _memory_expiry_loop(session_factory):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _worker_task, _expiry_task
+    # Import before use — get_memory_service is referenced below before the
+    # deferred import block, causing UnboundLocalError in Python's scoping rules.
+    from src.dependencies import get_retrieval_service, get_embedding_client, get_memory_service
+
     settings = get_settings()
     await init_db(settings.database_url)
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
@@ -53,7 +57,6 @@ async def lifespan(app: FastAPI):
     _expiry_task = asyncio.create_task(_memory_expiry_loop(session_factory))
 
     # Warm up models so first query isn't slow
-    from src.dependencies import get_retrieval_service, get_embedding_client, get_memory_service
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, get_retrieval_service().reranker._get_model)
     embed_client = get_embedding_client()
