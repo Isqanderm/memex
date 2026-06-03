@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires Memex running at http://memex:8000 via Docker. See https://github.com/Isqanderm/memex for setup.
 metadata:
   author: Isqanderm
-  version: "2.0.0"
+  version: "2.1.0"
   tags: "memory rag knowledge-base documents search context"
 ---
 
