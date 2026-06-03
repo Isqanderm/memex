@@ -439,4 +439,5 @@ async def _forget(client: httpx.AsyncClient, args: dict) -> list[types.TextConte
 
 async def main():
     async with stdio_server() as streams:
-        await server.run(*streams, server.create_initialization_options())
+        read_stream, write_stream = streams
+        await server.run(read_stream, write_stream, server.create_initialization_options())
