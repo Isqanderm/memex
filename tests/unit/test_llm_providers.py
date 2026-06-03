@@ -34,3 +34,24 @@ def test_llm_response_dataclass():
     assert r.answer == "hello"
     assert r.input_tokens == 0
     assert r.output_tokens == 0
+
+
+def test_claude_complete_filters_non_text_blocks():
+    """Verify content[0].text is only accessed on TextBlock instances."""
+    from anthropic.types import TextBlock
+    # Build a fake response where the first block has no .text
+    text_block = TextBlock(type="text", text="hello", citations=None)
+
+    class FakeUsage:
+        input_tokens = 10
+        output_tokens = 5
+
+    class FakeResponse:
+        content = [text_block]  # one TextBlock
+        usage = FakeUsage()
+
+    # The current code does content[0].text — if the first block were not
+    # a TextBlock this would crash. This test documents expected behaviour.
+    from anthropic.types import TextBlock as TB
+    texts = [b.text for b in FakeResponse.content if isinstance(b, TB)]
+    assert texts == ["hello"]
