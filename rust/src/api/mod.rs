@@ -3,6 +3,7 @@ pub mod jobs;
 pub mod memories;
 pub mod query;
 pub mod state;
+pub mod ui;
 
 use axum::Router;
 use state::AppState;

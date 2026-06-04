@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" style="height:100%">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memex{% if self.title() %} — {{ self.title() }}{% endif %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">⬡</div>
+      <span class="logo-text">Memex</span>
+    </div>
+    <div class="sidebar-nav">
+      <a href="/" class="nav-item {% if active_page == 'search' %}active{% endif %}">
+        <span>🔍</span> Search
+      </a>
+      <a href="/documents" class="nav-item {% if active_page == 'documents' %}active{% endif %}">
+        <span>📄</span> Documents
+      </a>
+      <a href="/upload" class="nav-item {% if active_page == 'upload' %}active{% endif %}">
+        <span>⬆</span> Upload
+      </a>
+    </div>
+    <div class="sidebar-footer">
+      Documents <span class="count-badge">{{ doc_count | default(0) }}</span>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    {% block content %}{% endblock %}
+  </div>
+
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

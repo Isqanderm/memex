@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Documents{% endblock %}
+
+{% macro doc_icon(mime) %}
+  {%- if (mime or '') == 'application/pdf' %}📄
+  {%- elif (mime or '') in ('text/plain', 'text/markdown') %}📝
+  {%- elif 'wordprocessingml' in (mime or '') %}📃
+  {%- elif 'presentationml' in (mime or '') %}📊
+  {%- elif 'spreadsheetml' in (mime or '') %}📊
+  {%- else %}📁
+  {%- endif %}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Documents</div>
+    <div class="page-subtitle">Indexed knowledge base files</div>
+  </div>
+  <a href="/upload" class="btn-primary">⬆ Upload</a>
+</div>
+
+<div class="page-body">
+
+  {% include "_jobs_fragment.html" %}
+
+  <div>
+    <div class="section-label">Indexed · {{ docs | length }}</div>
+    {% if docs %}
+    <div class="doc-list">
+      {% for doc in docs %}
+      <div class="doc-row">
+        <div class="doc-icon">{{ doc_icon(doc.mime_type) }}</div>
+        <div class="doc-info">
+          <div class="doc-name">{{ doc.title or doc.source.split('/')[-1] }}</div>
+          <div class="doc-meta">
+            {{ doc.mime_type }}
+            {% if doc.indexed_at %} · {{ doc.indexed_at.strftime('%d %b %Y') }}{% endif %}
+          </div>
+        </div>
+        <span class="badge badge-done">✓ ready</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-state-icon">📄</div>
+      <div>No documents yet. <a href="/upload">Upload the first one</a></div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
