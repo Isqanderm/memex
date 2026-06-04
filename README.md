@@ -145,6 +145,15 @@ uv run pytest tests/unit/ -v
 
 # Integration tests (requires Docker)
 uv run pytest tests/integration/ -v -m integration
+
+# Golden tests (contract regression suite — runs against a live instance)
+MEMEX_BASE_URL=http://localhost:8000 uv run pytest tests/golden/ -v -m unit
+
+# Run against both Python and Rust backends simultaneously
+bash scripts/run_golden_tests.sh
+
+# With LLM-dependent tests (requires API keys in .env)
+bash scripts/run_golden_tests.sh --e2e
 ```
 
 ## Stack
