@@ -4,7 +4,6 @@ from pathlib import Path
 import httpx
 import pytest
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -88,8 +87,7 @@ class TestDocumentsContract:
                     if job_data.get("doc_id"):
                         doc_id = job_data["doc_id"]
                         break
-                import time as t
-                t.sleep(1)
+                time.sleep(1)
 
         if doc_id is None:
             pytest.skip("Could not resolve doc_id in time — indexing too slow for this test")
