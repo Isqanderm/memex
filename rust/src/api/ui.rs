@@ -17,8 +17,10 @@ static TEMPLATES: OnceLock<Environment<'static>> = OnceLock::new();
 
 fn get_env() -> &'static Environment<'static> {
     TEMPLATES.get_or_init(|| {
+        let templates_dir = std::env::var("TEMPLATES_DIR")
+            .unwrap_or_else(|_| "templates".to_string());
         let mut env = Environment::new();
-        env.set_loader(minijinja::path_loader("templates"));
+        env.set_loader(minijinja::path_loader(templates_dir));
         env
     })
 }

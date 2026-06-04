@@ -25,6 +25,10 @@ services:
     build:
       context: .
       dockerfile: rust/Dockerfile
+      # To build for Raspberry Pi 4 (ARM64):
+      #   docker buildx build --platform=linux/arm64 -f rust/Dockerfile -t memex-rust:arm64 .
+      args:
+        TARGETARCH: amd64  # Change to arm64 for Raspberry Pi
     # OR use pre-built image:
     # image: ghcr.io/your-org/memex-rust:latest
     ports:
