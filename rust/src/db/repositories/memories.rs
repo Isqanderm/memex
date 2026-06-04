@@ -179,4 +179,50 @@ mod tests {
         let mem = repo.get_by_id(&id).unwrap().expect("should still exist");
         assert!(!mem.is_active);
     }
+
+    #[test]
+    fn expire_stale_deactivates_past_memories() {
+        let (_dir, pool) = setup();
+        let conn = pool.get().unwrap();
+        let repo = MemoryRepository::new(&conn);
+
+        // Create memory with forget_after in the past
+        let id = repo
+            .create(
+                "Past fact",
+                "raw",
+                "explicit",
+                Some("2020-01-01T00:00:00"), // past date
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        // Create memory with forget_after in the future
+        let id_future = repo
+            .create(
+                "Future fact",
+                "raw",
+                "explicit",
+                Some("2099-01-01T00:00:00"), // future date
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let expired = repo.expire_stale().unwrap();
+        assert_eq!(expired, 1, "should expire exactly 1 memory");
+
+        // Past memory should be inactive
+        let past = repo.get_by_id(&id).unwrap().unwrap();
+        assert!(!past.is_active, "past memory should be deactivated");
+
+        // Future memory should still be active
+        let future = repo.get_by_id(&id_future).unwrap().unwrap();
+        assert!(future.is_active, "future memory should still be active");
+    }
 }

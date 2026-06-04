@@ -73,9 +73,9 @@ impl<'a> JobRepository<'a> {
 
     /// Atomically claim the oldest pending job, transitioning it to 'processing'.
     /// Returns None when no pending jobs exist.
+    /// Uses RETURNING clause for atomic single-statement operation (SQLite 3.35+).
     pub fn claim_next(&self) -> rusqlite::Result<Option<IngestionJob>> {
-        // Use a subquery to atomically select and update to avoid race conditions.
-        let n = self.conn.execute(
+        let mut stmt = self.conn.prepare(
             "UPDATE ingestion_jobs
              SET status = 'processing', updated_at = datetime('now')
              WHERE id = (
@@ -83,19 +83,8 @@ impl<'a> JobRepository<'a> {
                  WHERE status = 'pending'
                  ORDER BY created_at ASC
                  LIMIT 1
-             )",
-            [],
-        )?;
-        if n == 0 {
-            return Ok(None);
-        }
-        // Fetch the job we just claimed.
-        let mut stmt = self.conn.prepare(
-            "SELECT id, status, source, checksum, doc_id, error, created_at, updated_at
-             FROM ingestion_jobs
-             WHERE status = 'processing'
-             ORDER BY updated_at DESC
-             LIMIT 1",
+             )
+             RETURNING id, status, source, checksum, doc_id, error, created_at, updated_at",
         )?;
         let mut rows = stmt.query([])?;
         if let Some(row) = rows.next()? {
