@@ -1,0 +1,220 @@
+use std::path::PathBuf;
+
+use axum::extract::{Multipart, Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::{delete, get, post};
+use axum::{Json, Router};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use tracing::info;
+
+use crate::db::repositories::documents::DocumentRepository;
+use crate::db::repositories::jobs::JobRepository;
+use crate::error::AppError;
+
+use super::state::AppState;
+
+#[derive(Serialize)]
+pub struct UploadResponse {
+    pub job_id: Option<String>,
+    pub doc_id: Option<String>,
+    pub status: String, // "pending" | "already_indexed" | "already_queued"
+}
+
+#[derive(Serialize)]
+pub struct DocumentItem {
+    pub id: String,
+    pub source: String,
+    pub mime_type: String,
+    pub title: Option<String>,
+    pub checksum: String,
+    pub indexed_at: String,
+}
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/api/documents", post(upload_document))
+        .route("/api/documents", get(list_documents))
+        .route("/api/documents/:id", delete(delete_document))
+}
+
+async fn upload_document(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<UploadResponse>, AppError> {
+    // Read the first field from the multipart upload
+    let field = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {e}")))?
+        .ok_or_else(|| AppError::BadRequest("no file field in multipart".to_string()))?;
+
+    let filename = field
+        .file_name()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "upload".to_string());
+
+    let content_type = field
+        .content_type()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+
+    let bytes = field
+        .bytes()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("failed to read upload bytes: {e}")))?;
+
+    // Compute SHA256 checksum
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let checksum = hex::encode(hasher.finalize());
+
+    let pool = state.pool.clone();
+    let upload_dir = state.config.upload_dir.clone();
+    let filename_clone = filename.clone();
+    let content_type_clone = content_type.clone();
+    let bytes_clone = bytes.clone();
+
+    let response = tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(AppError::Pool)?;
+        let doc_repo = DocumentRepository::new(&conn);
+        let job_repo = JobRepository::new(&conn);
+
+        // Check if already indexed
+        if let Some(doc) = doc_repo.get_by_checksum(&checksum).map_err(AppError::Db)? {
+            return Ok::<UploadResponse, AppError>(UploadResponse {
+                job_id: None,
+                doc_id: Some(doc.id),
+                status: "already_indexed".to_string(),
+            });
+        }
+
+        // Check if already queued
+        if let Some(job) = job_repo
+            .get_by_checksum_active(&checksum)
+            .map_err(AppError::Db)?
+        {
+            return Ok(UploadResponse {
+                job_id: Some(job.id),
+                doc_id: None,
+                status: "already_queued".to_string(),
+            });
+        }
+
+        // Save file to upload directory
+        std::fs::create_dir_all(&upload_dir)?;
+        let dest_path: PathBuf = PathBuf::from(&upload_dir).join(&filename_clone);
+        std::fs::write(&dest_path, &bytes_clone)?;
+
+        let source = dest_path.to_string_lossy().to_string();
+
+        // Create ingestion job
+        let job_id = job_repo.create(&source, &checksum).map_err(AppError::Db)?;
+
+        info!(
+            job_id = %job_id,
+            filename = %filename_clone,
+            mime = %content_type_clone,
+            "Created ingestion job"
+        );
+
+        Ok(UploadResponse {
+            job_id: Some(job_id),
+            doc_id: None,
+            status: "pending".to_string(),
+        })
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+
+    Ok(Json(response))
+}
+
+async fn list_documents(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<DocumentItem>>, AppError> {
+    let pool = state.pool.clone();
+
+    let docs = tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(AppError::Pool)?;
+        let doc_repo = DocumentRepository::new(&conn);
+        doc_repo.list_all().map_err(AppError::Db)
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+
+    let items = docs
+        .into_iter()
+        .map(|d| DocumentItem {
+            id: d.id,
+            source: d.source,
+            mime_type: d.mime_type,
+            title: d.title,
+            checksum: d.checksum,
+            indexed_at: d.indexed_at,
+        })
+        .collect();
+
+    Ok(Json(items))
+}
+
+async fn delete_document(
+    State(state): State<AppState>,
+    Path(doc_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let pool = state.pool.clone();
+    let tantivy = state.tantivy.clone();
+    let vectors = state.vectors.clone();
+    let doc_id_clone = doc_id.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        let conn = pool.get().map_err(AppError::Pool)?;
+        let doc_repo = DocumentRepository::new(&conn);
+
+        // Check document exists
+        let _doc = doc_repo
+            .get_by_id(&doc_id_clone)
+            .map_err(AppError::Db)?
+            .ok_or_else(|| AppError::NotFound(format!("document {doc_id_clone}")))?;
+
+        // Remove chunk vectors
+        vectors
+            .delete_chunks_for_doc(&conn, &doc_id_clone)
+            .map_err(AppError::Db)?;
+
+        // Remove from tantivy (then commit)
+        tantivy
+            .delete_by_doc_id(&doc_id_clone)
+            .map_err(|e| AppError::Parse(e.to_string()))?;
+        tantivy
+            .commit()
+            .map_err(|e| AppError::Parse(e.to_string()))?;
+
+        // Delete from DB (CASCADE removes chunks)
+        doc_repo.delete(&doc_id_clone).map_err(AppError::Db)?;
+
+        info!(doc_id = %doc_id_clone, "Deleted document");
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upload_response_serializes() {
+        let r = UploadResponse {
+            job_id: Some("j1".to_string()),
+            doc_id: None,
+            status: "pending".to_string(),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("pending"));
+    }
+}
