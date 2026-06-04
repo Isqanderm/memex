@@ -122,7 +122,7 @@ impl<'a> ChunkRepository<'a> {
     /// Get all leaf chunk IDs for a document (used when deleting a document).
     pub fn get_leaf_ids_for_doc(&self, doc_id: &str) -> rusqlite::Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id FROM chunks WHERE doc_id = ?1 AND chunk_role = 'leaf'",
+            "SELECT id FROM chunks WHERE doc_id = ?1 AND chunk_role = 'leaf' ORDER BY chunk_index",
         )?;
         let rows = stmt.query_map(params![doc_id], |row| row.get(0))?;
         rows.collect()

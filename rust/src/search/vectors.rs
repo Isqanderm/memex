@@ -58,17 +58,17 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Delete all chunk vectors whose `chunk_id` starts with `doc_id/`.
-    /// Convention: chunk IDs are formatted as `{doc_id}/{index}`.
+    /// Delete all chunk vectors for a document by joining with the chunks table.
     pub fn delete_chunks_for_doc(
         &self,
         conn: &Connection,
         doc_id: &str,
     ) -> rusqlite::Result<()> {
-        let prefix = format!("{}/", doc_id);
         conn.execute(
-            "DELETE FROM chunk_vectors WHERE chunk_id LIKE ?1",
-            params![format!("{}%", prefix)],
+            "DELETE FROM chunk_vectors WHERE chunk_id IN (
+                 SELECT id FROM chunks WHERE doc_id = ?1 AND chunk_role = 'leaf'
+             )",
+            params![doc_id],
         )?;
         Ok(())
     }
@@ -272,5 +272,35 @@ mod tests {
             !after.iter().any(|h| h.id == "chunk-del"),
             "chunk-del should not appear after deletion"
         );
+    }
+
+    #[test]
+    fn delete_chunks_for_doc_removes_all_vectors() {
+        let store = make_store();
+        let (_dir, conn) = open_conn();
+
+        // Insert a document and leaf chunk in the chunks table
+        conn.execute(
+            "INSERT INTO documents (id, source, mime_type, checksum, metadata) VALUES ('doc1', 's', 't', 'ck1', '{}')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chunks (id, doc_id, chunk_role, chunk_index, language, content) VALUES ('chunk1', 'doc1', 'leaf', 0, 'en', 'content')",
+            [],
+        ).unwrap();
+
+        let v: Vec<f32> = (0..384).map(|i| if i == 0 { 1.0f32 } else { 0.0 }).collect();
+        store.insert_chunk(&conn, "chunk1", &v).unwrap();
+
+        // Verify it's there
+        let results = store.search_chunks(&conn, &v, 5).unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Delete by doc_id
+        store.delete_chunks_for_doc(&conn, "doc1").unwrap();
+
+        // Verify it's gone
+        let results = store.search_chunks(&conn, &v, 5).unwrap();
+        assert!(results.is_empty());
     }
 }
