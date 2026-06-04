@@ -15,6 +15,30 @@ Personal RAG система. Один пользователь. Индексир
 
 ---
 
+## Two-Product Structure
+
+Memex существует в двух вариантах с независимыми версиями:
+
+| | Python (primary) | Rust (lightweight) |
+|---|---|---|
+| **DB** | PostgreSQL 15 + pgvector | SQLite + tantivy |
+| **Версия** | `pyproject.toml` | `rust/Cargo.toml` |
+| **Тег релиза** | `v2.1.0` | `rust/v3.0.0` |
+| **Docker** | `ghcr.io/…/memex:2.1.0` | `ghcr.io/…/memex:rust-3.0.0` |
+| **Changelog** | `CHANGELOG.md` | `rust/CHANGELOG.md` |
+| **CI** | `.github/workflows/test.yml` | `.github/workflows/rust-ci.yml` |
+| **RAM idle** | ~2.5 GB | ~80-120 MB |
+
+### Правила поддержки двух версий
+
+1. **Python — primary**: новые фичи разрабатываются в Python. Rust получает фичи отдельным циклом.
+2. **API-контракт фиксирован golden-тестами**: `tests/golden/` — источник правды. Любое изменение контракта требует обновления golden-тестов.
+3. **Известные намеренные расхождения** задокументированы в `tests/golden/test_memory.py` и `tests/golden/test_search.py` через хелперы `_assert_context_shape` и `_extract_chunks`.
+4. **Rust CI запускает golden-тесты** после сборки бинарника — регрессии видны немедленно.
+5. **Версии независимы**: Python можно релизить без Rust и наоборот.
+
+---
+
 ## Стек
 
 | Компонент | Технология |
