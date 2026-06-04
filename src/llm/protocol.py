@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, AsyncIterator
+from typing import AsyncIterator, Protocol
 
 
 @dataclass

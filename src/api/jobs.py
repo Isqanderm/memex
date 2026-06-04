@@ -1,10 +1,12 @@
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.api.documents import get_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.db.models import IngestionJob
+from src.db.session import get_db_session
 
 router = APIRouter(tags=["jobs"])
 
@@ -20,7 +22,7 @@ class JobResponse(BaseModel):
 async def get_job(
     job_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> JobResponse:
     result = await session.execute(
         select(IngestionJob).where(IngestionJob.id == job_id)
     )

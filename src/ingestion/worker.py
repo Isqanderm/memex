@@ -1,8 +1,16 @@
 import asyncio
 import logging
-from sqlalchemy.ext.asyncio import async_sessionmaker
+import uuid
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from src.db.repositories.job_repo import JobRepository
 from src.ingestion.pipeline import IngestionPipeline
+
+if TYPE_CHECKING:
+    from src.memory.service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -10,16 +18,16 @@ logger = logging.getLogger(__name__)
 class IngestionWorker:
     def __init__(
         self,
-        session_factory: async_sessionmaker,
+        session_factory: async_sessionmaker[AsyncSession],
         pipeline: IngestionPipeline,
-        memory_service_factory=None,  # optional: callable(session) -> MemoryService
+        memory_service_factory: Callable[[AsyncSession], "MemoryService"] | None = None,
     ):
         self.session_factory = session_factory
         self.pipeline = pipeline
         self.memory_service_factory = memory_service_factory
         self._running = False
 
-    async def start(self):
+    async def start(self) -> None:
         self._running = True
         logger.info("IngestionWorker started")
         while self._running:
@@ -33,11 +41,12 @@ class IngestionWorker:
                 logger.exception(f"Worker loop error: {e}")
                 await asyncio.sleep(1)
 
-    def stop(self):
+    def stop(self) -> None:
         self._running = False
 
-    async def _extract_memory(self, session, doc_id) -> None:
+    async def _extract_memory(self, session: AsyncSession, doc_id: uuid.UUID) -> None:
         from sqlalchemy import select
+
         from src.db.models import Chunk
         from src.memory.worker import queue_document_extraction, run_document_extraction
 
@@ -48,6 +57,9 @@ class IngestionWorker:
         )
         doc_text = "\n\n".join(row[0] for row in result.all())
         if not doc_text.strip():
+            return
+
+        if self.memory_service_factory is None:
             return
 
         mem_job = await queue_document_extraction(session, str(doc_id))

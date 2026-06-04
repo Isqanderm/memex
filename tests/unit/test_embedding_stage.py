@@ -1,4 +1,5 @@
 import pytest
+
 from src.ingestion.embedding import EmbeddingStage
 from src.models.chunk import ChunkData
 from tests.mocks.mock_embedding import MockEmbeddingClient
@@ -21,8 +22,8 @@ async def test_embeds_only_leaf_chunks():
     leaves = [c for c in result if c.chunk_role == "leaf"]
 
     assert all(p.embedding is None for p in parents)
-    assert all(l.embedding is not None for l in leaves)
-    assert all(len(l.embedding) == 4 for l in leaves)
+    assert all(leaf.embedding is not None for leaf in leaves)
+    assert all(len(leaf.embedding) == 4 for leaf in leaves)
 
 
 @pytest.mark.asyncio

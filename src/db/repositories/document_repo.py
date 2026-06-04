@@ -1,7 +1,10 @@
 import uuid
+from typing import Any
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
-from src.db.models import Document, Chunk
+
+from src.db.models import Chunk, Document
 
 
 class DocumentRepository:
@@ -15,7 +18,7 @@ class DocumentRepository:
         return result.scalar_one_or_none()
 
     async def create(self, source: str, mime_type: str, checksum: str,
-                     title: str | None = None, metadata: dict | None = None) -> Document:
+                     title: str | None = None, metadata: dict[str, Any] | None = None) -> Document:
         doc = Document(
             id=uuid.uuid4(),
             source=source,

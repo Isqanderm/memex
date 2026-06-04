@@ -2,6 +2,8 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, cast
+
 from src.llm.protocol import LLMProvider
 
 EXTRACT_PROMPT = """\
@@ -56,12 +58,12 @@ class RelationResult:
     relation: str  # updates | extends | derives | new
 
 
-def _parse_json(text: str) -> dict:
+def _parse_json(text: str) -> dict[str, Any]:
     start = text.find("{")
     end = text.rfind("}") + 1
     if start == -1 or end == 0:
         raise ValueError(f"No JSON found in: {text[:100]}")
-    return json.loads(text[start:end])
+    return cast(dict[str, Any], json.loads(text[start:end]))
 
 
 _VALID_CATEGORIES = frozenset({"research", "reminder", "insight", "decision", "preference"})

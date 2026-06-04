@@ -1,9 +1,11 @@
 import uuid
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-from src.retrieval.memory_search import MemorySearch, MemoryHit
-from src.db.models import Memory
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from src.db.models import Memory
+from src.retrieval.memory_search import MemoryHit, MemorySearch
 
 
 def make_memory(content="User works at Acme"):

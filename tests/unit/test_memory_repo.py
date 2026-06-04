@@ -1,8 +1,10 @@
 import uuid
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from src.db.repositories.memory_repo import MemoryRepository
+
+import pytest
+
 from src.db.models import Memory
+from src.db.repositories.memory_repo import MemoryRepository
 
 
 def make_memory(is_active=True, vector=None):

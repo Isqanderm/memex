@@ -57,6 +57,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table('memory_extraction_jobs')
-    op.drop_index('ix_memories_vector', 'memories')
+    op.execute("DROP INDEX IF EXISTS ix_memories_vector")
     op.drop_index('ix_memories_is_active', 'memories')
     op.drop_table('memories')

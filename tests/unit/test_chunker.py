@@ -1,7 +1,5 @@
-import pytest
 from src.ingestion.chunker import SmallToBigChunker
 from src.models.parsed import ParsedDocument, Section
-from src.models.chunk import ChunkData
 
 
 def make_doc(content: str, heading: str | None = None) -> ParsedDocument:

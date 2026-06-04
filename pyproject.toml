@@ -35,6 +35,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "testcontainers[postgres]>=4.8",
     "pytest-cov>=5.0",
+    "ruff>=0.9",
+    "mypy>=1.10",
 ]
 
 [tool.pytest.ini_options]
@@ -46,6 +48,32 @@ markers = [
     "integration: integration tests (requires Docker)",
     "e2e: end-to-end tests (requires API keys)",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pgvector.*",
+    "langdetect",
+    "sentence_transformers.*",
+    "markitdown.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["src.mcp.server"]
+disallow_untyped_decorators = false
+disable_error_code = ["no-untyped-call"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

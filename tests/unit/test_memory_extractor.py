@@ -1,8 +1,9 @@
-import pytest
-from unittest.mock import AsyncMock
-from src.memory.extractor import FactExtractor, ExtractedFact, RelationResult
-from tests.mocks.mock_llm import MockLLMProvider
 import uuid
+
+import pytest
+
+from src.memory.extractor import FactExtractor
+from tests.mocks.mock_llm import MockLLMProvider
 
 
 @pytest.mark.asyncio

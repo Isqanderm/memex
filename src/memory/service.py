@@ -1,9 +1,12 @@
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.memory.extractor import FactExtractor
-from src.db.repositories.memory_repo import MemoryRepository
+
 from src.db.models import Memory
+from src.db.repositories.memory_repo import MemoryRepository
+from src.memory.extractor import FactExtractor
 
 
 @dataclass
@@ -17,7 +20,7 @@ class MemoryService:
         self,
         repo: MemoryRepository,
         extractor: FactExtractor,
-        embed_fn,  # async callable: str -> list[float]
+        embed_fn: Callable[[str], Awaitable[list[float]]],
     ):
         self.repo = repo
         self.extractor = extractor

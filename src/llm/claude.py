@@ -1,4 +1,7 @@
 from typing import AsyncIterator
+
+from anthropic.types import TextBlock
+
 from src.llm.protocol import LLMResponse
 
 
@@ -18,8 +21,10 @@ class ClaudeProvider:
             temperature=self.temperature,
             messages=[{"role": "user", "content": prompt}],
         )
+        text_blocks = [b for b in response.content if isinstance(b, TextBlock)]
+        answer = text_blocks[0].text if text_blocks else ""
         return LLMResponse(
-            answer=response.content[0].text,
+            answer=answer,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )

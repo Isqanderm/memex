@@ -22,6 +22,7 @@ Most document Q&A tools are SaaS — your documents leave your machine. Memex ru
 | Hybrid search (semantic + BM25) | ✅ | ❌ | ❌ | ✅ |
 | Local reranker (no extra API) | ✅ | ❌ | ❌ | ❌ |
 | MCP server for Claude Code | ✅ | ❌ | ❌ | ❌ |
+| Persistent memory layer | ✅ | ❌ | ❌ | ❌ |
 | Small-to-Big chunking | ✅ | ❌ | ❌ | ❌ |
 | REST API | ✅ | ✅ | ✅ | ✅ |
 | Web UI | ✅ | ✅ | ✅ | ✅ |
@@ -34,6 +35,7 @@ Most document Q&A tools are SaaS — your documents leave your machine. Memex ru
 - **Hybrid search:** semantic (pgvector) + full-text (BM25) + RRF fusion
 - **Smart chunking:** Small-to-Big — retrieval over small chunks, LLM receives full parent context
 - **Local reranker:** cross-encoder, no extra API calls
+- **Persistent memory:** extracts atomic facts from conversations, resolves conflicts, categorises by type (research / reminder / insight / decision / preference)
 - **Multilingual:** EN + RU in a single corpus
 - **Async indexing:** uploads return immediately, indexing runs in background via PG queue
 - **Configurable LLM:** Claude or GPT-4o via env variable
@@ -102,7 +104,9 @@ Add to `.claude/settings.json`:
 }
 ```
 
-Available tools: `remember`, `recall`, `context`, `observe`, `memories`, `index_file`, `check_indexing`, `forget`.
+**Memory tools:** `remember` · `recall` · `context` · `observe` · `memories` · `forget`
+
+**Document tools:** `index_file` · `check_indexing` · `list_memories`
 
 ## Hermes Integration
 
@@ -128,13 +132,19 @@ ADRs: [`docs/architecture/adr/`](docs/architecture/adr/) — 15 accepted archite
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+uv sync --extra dev
+
+# Lint
+uv run ruff check src/ tests/
+
+# Type check
+uv run mypy src/
 
 # Unit tests (no Docker required)
-pytest tests/unit/ -v
+uv run pytest tests/unit/ -v
 
 # Integration tests (requires Docker)
-pytest tests/integration/ -v -m integration
+uv run pytest tests/integration/ -v -m integration
 ```
 
 ## Stack

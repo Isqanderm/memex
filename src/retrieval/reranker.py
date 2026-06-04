@@ -1,12 +1,14 @@
 import asyncio
+from typing import Any
+
 from src.retrieval.expand import L2Chunk
 
 
 class Reranker:
-    _model = None
+    _model: Any = None
     MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-    def _get_model(self):
+    def _get_model(self) -> Any:
         if Reranker._model is None:
             from sentence_transformers import CrossEncoder
             Reranker._model = CrossEncoder(self.MODEL_NAME)

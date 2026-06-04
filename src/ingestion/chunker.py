@@ -1,5 +1,5 @@
-from src.models.parsed import ParsedDocument, Section
 from src.models.chunk import ChunkData
+from src.models.parsed import ParsedDocument
 
 
 def _split_text(text: str, size: int, overlap: int) -> list[str]:

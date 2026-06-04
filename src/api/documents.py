@@ -1,14 +1,17 @@
 import hashlib
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.session import get_db_session
+
+from src.config import get_settings
 from src.db.repositories.document_repo import DocumentRepository
 from src.db.repositories.job_repo import JobRepository
-from src.config import get_settings
+from src.db.session import get_db_session
 
 router = APIRouter(tags=["documents"])
 
@@ -23,7 +26,7 @@ class UploadResponse(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db_session),
-):
+) -> UploadResponse:
     settings = get_settings()
     content = await file.read()
     checksum = hashlib.sha256(content).hexdigest()
@@ -50,8 +53,9 @@ async def upload_document(
 async def serve_document_file(
     doc_id: str,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> FileResponse:
     from sqlalchemy import select
+
     from src.db.models import Document
     try:
         doc_uuid = uuid.UUID(doc_id)
@@ -71,10 +75,11 @@ async def serve_document_file(
 @router.patch("/documents/{doc_id}")
 async def update_document(
     doc_id: str,
-    body: dict,
+    body: dict[str, Any],
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     from sqlalchemy import select
+
     from src.db.models import Document
     try:
         doc_uuid = uuid.UUID(doc_id)
@@ -96,8 +101,9 @@ async def update_document(
 async def delete_document(
     doc_id: str,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> None:
     from sqlalchemy import select
+
     from src.db.models import Document
     try:
         doc_uuid = uuid.UUID(doc_id)
@@ -116,8 +122,11 @@ async def delete_document(
 
 
 @router.get("/documents")
-async def list_documents(session: AsyncSession = Depends(get_db_session)):
+async def list_documents(
+    session: AsyncSession = Depends(get_db_session),
+) -> list[dict[str, Any]]:
     from sqlalchemy import select
+
     from src.db.models import Document
     result = await session.execute(
         select(Document).order_by(Document.indexed_at.desc())

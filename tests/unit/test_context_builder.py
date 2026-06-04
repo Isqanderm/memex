@@ -1,6 +1,9 @@
 import uuid
+from datetime import datetime, timezone
+
 from src.retrieval.context import ContextBuilder
 from src.retrieval.expand import L2Chunk
+from src.retrieval.memory_search import MemoryHit
 
 
 def make_chunk(content: str, title: str = "Doc", heading: str | None = None) -> L2Chunk:
@@ -51,11 +54,6 @@ def test_empty_chunks():
     ctx = builder.build("query", [])
     assert "query" in ctx.prompt
     assert ctx.sources == []
-
-
-from src.retrieval.memory_search import MemoryHit
-from datetime import datetime, timezone
-import uuid
 
 
 def make_hit(content, category=None, project=None):

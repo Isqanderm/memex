@@ -1,12 +1,15 @@
 import mimetypes
+import uuid
 from pathlib import Path
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.adapters.registry import AdapterRegistry
+
 from src.adapters.protocol import Source
+from src.adapters.registry import AdapterRegistry
 from src.ingestion.chunker import SmallToBigChunker
-from src.ingestion.language import LanguageDetector
 from src.ingestion.embedding import EmbeddingStage
 from src.ingestion.indexing import IndexingStage
+from src.ingestion.language import LanguageDetector
 
 
 class IngestionPipeline:
@@ -24,7 +27,7 @@ class IngestionPipeline:
         self.indexing_stage = indexing_stage
         self.language_detector = language_detector
 
-    async def process(self, session: AsyncSession, source_path: str, checksum: str):
+    async def process(self, session: AsyncSession, source_path: str, checksum: str) -> uuid.UUID:
         mime_type, _ = mimetypes.guess_type(source_path)
         mime_type = mime_type or "application/octet-stream"
 

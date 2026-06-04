@@ -1,12 +1,13 @@
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.api.documents import get_db_session
-from src.dependencies import get_retrieval_service, get_embedding_client
-from src.retrieval.memory_search import MemorySearch
+
 from src.db.repositories.memory_repo import MemoryRepository
+from src.db.session import get_db_session
+from src.dependencies import get_embedding_client, get_retrieval_service
+from src.retrieval.memory_search import MemorySearch
 
 router = APIRouter(tags=["query"])
 
@@ -19,14 +20,14 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
-    sources: list[dict]
+    sources: list[dict[str, Any]]
 
 
 @router.post("/query", response_model=QueryResponse)
 async def query_documents(
     request: QueryRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> QueryResponse:
     service = get_retrieval_service()
     embedding_client = get_embedding_client()
 
@@ -54,16 +55,13 @@ class ChunksRequest(BaseModel):
 async def search_chunks(
     request: ChunksRequest,
     session: AsyncSession = Depends(get_db_session),
-):
+) -> dict[str, Any]:
     service = get_retrieval_service()
     embedding_client = get_embedding_client()
 
     async def embed(text: str) -> list[float]:
         results = await embedding_client.embed_batch([text], is_query=True)
         return results[0]
-
-    # Create per-request memory search with session-scoped repository (for consistency, even if not used by search_chunks)
-    memory_search = MemorySearch(repo=MemoryRepository(session))
 
     chunks = await service.search_chunks(session, request.query, embed_fn=embed, top_k=request.top_k)
     return {"chunks": chunks}
