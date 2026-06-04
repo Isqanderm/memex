@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 
+@pytest.mark.golden
 @pytest.mark.unit
 class TestHealth:
     def test_health_returns_200(self, client: httpx.Client) -> None:

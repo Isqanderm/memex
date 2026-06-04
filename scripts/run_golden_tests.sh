@@ -11,11 +11,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-E2E_MARKER=""
+E2E_MARKER=("-m" "unit and not e2e")
 if [[ "${1:-}" == "--e2e" ]]; then
-  E2E_MARKER="-m 'unit or e2e'"
-else
-  E2E_MARKER="-m unit"
+  E2E_MARKER=("-m" "unit or e2e")
 fi
 
 PYTHON_PORT=8000
@@ -57,7 +55,7 @@ RUST_RESULT=0
 echo ""
 echo "=== Running golden tests against Python backend ==="
 MEMEX_BASE_URL="http://localhost:$PYTHON_PORT" \
-  uv run pytest tests/golden/ $E2E_MARKER -v \
+  uv run pytest tests/golden/ "${E2E_MARKER[@]}" -v \
   --tb=short --no-header \
   --junitxml="$ROOT/test-results/golden-python.xml" \
   || PYTHON_RESULT=$?
@@ -65,7 +63,7 @@ MEMEX_BASE_URL="http://localhost:$PYTHON_PORT" \
 echo ""
 echo "=== Running golden tests against Rust backend ==="
 MEMEX_BASE_URL="http://localhost:$RUST_PORT" \
-  uv run pytest tests/golden/ $E2E_MARKER -v \
+  uv run pytest tests/golden/ "${E2E_MARKER[@]}" -v \
   --tb=short --no-header \
   --junitxml="$ROOT/test-results/golden-rust.xml" \
   || RUST_RESULT=$?

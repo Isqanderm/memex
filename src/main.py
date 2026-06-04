@@ -123,6 +123,12 @@ from src.api import query as query_router  # noqa: E402
 from src.api.memories import router as memory_router  # noqa: E402
 from src.ui import pages as ui_router  # noqa: E402
 
+
+@app.get("/health")
+async def health() -> str:
+    return "ok"
+
+
 app.include_router(docs_router.router, prefix="/api")
 app.include_router(query_router.router, prefix="/api")
 app.include_router(jobs_router.router, prefix="/api")

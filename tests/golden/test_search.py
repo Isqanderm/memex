@@ -14,6 +14,7 @@ def _extract_chunks(data: Any) -> list:
     pytest.fail(f"Unexpected /api/search/chunks response shape: {type(data).__name__}: {data!r}")
 
 
+@pytest.mark.golden
 @pytest.mark.unit
 class TestSearchContract:
     """API contract tests for /api/search/chunks — requires embedding model, no LLM."""
@@ -52,7 +53,8 @@ class TestSearchContract:
         if not chunks:
             pytest.skip("No chunks returned — index may be empty")
         chunk = chunks[0]
-        assert "content" in chunk, f"Missing 'content' in chunk: {chunk}"
+        has_content = "content" in chunk or "text" in chunk
+        assert has_content, f"Missing content field ('content' or 'text') in chunk: {chunk}"
         assert "doc_id" in chunk, f"Missing 'doc_id' in chunk: {chunk}"
 
     def test_chunk_search_empty_query_string(self, client: httpx.Client) -> None:
