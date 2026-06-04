@@ -48,6 +48,7 @@ struct OpenAiMessage<'a> {
 #[derive(Deserialize)]
 struct OpenAiResponse {
     choices: Vec<OpenAiChoice>,
+    #[serde(default)]
     usage: OpenAiUsage,
 }
 
@@ -61,7 +62,7 @@ struct OpenAiMessageContent {
     content: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct OpenAiUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
@@ -202,11 +203,43 @@ impl LlmProvider for OpenAiProvider {
                     for line in event.lines() {
                         if let Some(data) = line.strip_prefix("data: ") {
                             if data == "[DONE]" { return; }
-                            if let Ok(chunk) = serde_json::from_str::<OpenAiStreamChunk>(data) {
+                            match serde_json::from_str::<OpenAiStreamChunk>(data) {
+                                Ok(chunk) => {
+                                    for choice in chunk.choices {
+                                        if let Some(content) = choice.delta.content {
+                                            yield Ok(content);
+                                        }
+                                    }
+                                }
+                                Err(_e) => {
+                                    // Silently skip non-JSON SSE control messages (comments, keepalives)
+                                    // but trace unknown data payloads
+                                    if !data.starts_with(':') {
+                                        tracing::debug!("skipping unparseable SSE data: {}", &data[..data.len().min(100)]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Process any remaining data in the buffer after stream ends
+            if !buffer.trim().is_empty() {
+                for line in buffer.lines() {
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" { return; }
+                        match serde_json::from_str::<OpenAiStreamChunk>(data) {
+                            Ok(chunk) => {
                                 for choice in chunk.choices {
                                     if let Some(content) = choice.delta.content {
                                         yield Ok(content);
                                     }
+                                }
+                            }
+                            Err(_e) => {
+                                if !data.starts_with(':') {
+                                    tracing::debug!("skipping unparseable SSE data: {}", &data[..data.len().min(100)]);
                                 }
                             }
                         }

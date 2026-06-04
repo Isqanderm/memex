@@ -48,6 +48,7 @@ struct ClaudeMessage<'a> {
 #[derive(Deserialize)]
 struct ClaudeResponse {
     content: Vec<ClaudeContent>,
+    #[serde(default)]
     usage: ClaudeUsage,
 }
 
@@ -58,7 +59,7 @@ struct ClaudeContent {
     text: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct ClaudeUsage {
     input_tokens: u32,
     output_tokens: u32,
@@ -201,7 +202,38 @@ impl LlmProvider for ClaudeProvider {
                     for line in event.lines() {
                         if let Some(data) = line.strip_prefix("data: ") {
                             if data == "[DONE]" { return; }
-                            if let Ok(ev) = serde_json::from_str::<ClaudeStreamEvent>(data) {
+                            match serde_json::from_str::<ClaudeStreamEvent>(data) {
+                                Ok(ev) => {
+                                    if ev.event_type == "content_block_delta" {
+                                        if let Some(delta) = ev.delta {
+                                            if delta.delta_type == "text_delta" {
+                                                if let Some(text) = delta.text {
+                                                    yield Ok(text);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(_e) => {
+                                    // Silently skip non-JSON SSE control messages (comments, keepalives)
+                                    // but trace unknown data payloads
+                                    if !data.starts_with(':') {
+                                        tracing::debug!("skipping unparseable SSE data: {}", &data[..data.len().min(100)]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Process any remaining data in the buffer after stream ends
+            if !buffer.trim().is_empty() {
+                for line in buffer.lines() {
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" { return; }
+                        match serde_json::from_str::<ClaudeStreamEvent>(data) {
+                            Ok(ev) => {
                                 if ev.event_type == "content_block_delta" {
                                     if let Some(delta) = ev.delta {
                                         if delta.delta_type == "text_delta" {
@@ -210,6 +242,11 @@ impl LlmProvider for ClaudeProvider {
                                             }
                                         }
                                     }
+                                }
+                            }
+                            Err(_e) => {
+                                if !data.starts_with(':') {
+                                    tracing::debug!("skipping unparseable SSE data: {}", &data[..data.len().min(100)]);
                                 }
                             }
                         }
