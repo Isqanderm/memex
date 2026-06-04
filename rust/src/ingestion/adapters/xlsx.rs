@@ -55,6 +55,7 @@ impl DocumentAdapter for XlsxAdapter {
                     })
                     .collect();
                 let row_str = cells.join("\t");
+                // Empty and null cells are dropped — they add no textual content
                 if !row_str.trim().is_empty() {
                     rows_text.push(row_str);
                 }

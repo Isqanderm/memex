@@ -10,15 +10,13 @@ pub struct MarkdownAdapter;
 
 impl DocumentAdapter for MarkdownAdapter {
     fn can_handle(&self, path: &Path, mime_type: &str) -> bool {
-        let md_mime = mime_type.contains("markdown")
-            || mime_type.contains("text/x-markdown")
-            || mime_type.contains("text/plain");
-        let md_ext = path
+        let has_md_ext = path
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "markdown" | "mdown"))
             .unwrap_or(false);
-        md_ext || md_mime
+        let has_md_mime = mime_type == "text/markdown" || mime_type == "text/x-markdown";
+        has_md_ext || has_md_mime
     }
 
     fn parse(&self, path: &Path) -> anyhow::Result<ParsedDocument> {
@@ -145,7 +143,8 @@ fn heading_level_to_u32(level: HeadingLevel) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::split_by_headings;
+    use super::{split_by_headings, MarkdownAdapter, DocumentAdapter};
+    use std::path::Path;
 
     #[test]
     fn split_markdown_by_headings() {
@@ -193,5 +192,13 @@ mod tests {
         assert_eq!(sections[0].level, 1);
         assert_eq!(sections[1].level, 2);
         assert_eq!(sections[2].level, 3);
+    }
+
+    #[test]
+    fn does_not_handle_plain_text_files() {
+        let adapter = MarkdownAdapter;
+        assert!(!adapter.can_handle(Path::new("file.txt"), "text/plain"));
+        assert!(adapter.can_handle(Path::new("file.md"), "text/plain")); // md extension wins
+        assert!(adapter.can_handle(Path::new("file.md"), "text/markdown"));
     }
 }
