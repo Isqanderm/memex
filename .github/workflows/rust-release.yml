@@ -42,7 +42,7 @@ jobs:
 
       - name: Install cross (for ARM64)
         if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --version 0.2.5
 
       - name: Build (native)
         if: "!matrix.cross"
@@ -93,8 +93,9 @@ jobs:
           pattern = rf'## \[{re.escape(version)}\].*?(?=\n## \[|\Z)'
           match = re.search(pattern, text, re.DOTALL)
           body = match.group(0).strip() if match else f'Rust release {version}'
+          delim = f'CHANGELOG_{version.replace(".", "_")}'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'body<<EOF\n{body}\nEOF\n')
+              f.write(f'body<<{delim}\n{body}\n{delim}\n')
           EOF
 
       - name: Create GitHub Release

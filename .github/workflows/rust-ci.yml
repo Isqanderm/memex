@@ -101,6 +101,7 @@ jobs:
             curl -sf http://localhost:8000/health && break
             sleep 2
           done
+          curl -sf http://localhost:8000/health || { echo "Rust binary failed to start"; exit 1; }
 
       - name: Run golden tests (unit, no LLM)
         run: |

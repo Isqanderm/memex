@@ -5,7 +5,10 @@ on:
     branches: [main]
     paths:
       - 'src/**'
-      - 'tests/**'
+      - 'tests/unit/**'
+      - 'tests/integration/**'
+      - 'tests/mocks/**'
+      - 'tests/conftest.py'
       - 'alembic/**'
       - 'pyproject.toml'
       - 'uv.lock'
@@ -13,7 +16,10 @@ on:
     branches: [main]
     paths:
       - 'src/**'
-      - 'tests/**'
+      - 'tests/unit/**'
+      - 'tests/integration/**'
+      - 'tests/mocks/**'
+      - 'tests/conftest.py'
       - 'alembic/**'
       - 'pyproject.toml'
       - 'uv.lock'
