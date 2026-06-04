@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -6,7 +7,7 @@ use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING};
-use tantivy::tokenizer::{Language, LowerCaser, SimpleTokenizer, Stemmer, TextAnalyzer};
+use tantivy::tokenizer::{Language, LowerCaser, SimpleTokenizer, Stemmer, TextAnalyzer, TokenizerManager};
 use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term};
 
 /// A search hit from the full-text index.
@@ -17,21 +18,6 @@ pub struct FtsHit {
     pub score: f32,
 }
 
-/// Tokenizer name used for the content field.
-const CONTENT_TOKENIZER: &str = "content_lang";
-
-/// Full-text search store backed by tantivy.
-pub struct TantivyStore {
-    index: Index,
-    reader: IndexReader,
-    writer: Arc<RwLock<IndexWriter>>,
-    f_chunk_id: tantivy::schema::Field,
-    f_doc_id: tantivy::schema::Field,
-    f_content: tantivy::schema::Field,
-    #[allow(dead_code)]
-    f_language: tantivy::schema::Field,
-}
-
 /// Build a stemming analyzer for the given language.
 fn build_analyzer(lang: Language) -> TextAnalyzer {
     TextAnalyzer::builder(SimpleTokenizer::default())
@@ -40,88 +26,145 @@ fn build_analyzer(lang: Language) -> TextAnalyzer {
         .build()
 }
 
-/// Map a language code string (e.g. "en", "ru") to a tantivy `Language`.
-fn lang_from_code(code: &str) -> Language {
+/// Canonical code for each supported language (used as field-name suffix and tokenizer name).
+const LANGUAGES: &[(&str, Language)] = &[
+    ("en", Language::English),
+    ("ru", Language::Russian),
+    ("de", Language::German),
+    ("fr", Language::French),
+    ("es", Language::Spanish),
+    ("it", Language::Italian),
+    ("pt", Language::Portuguese),
+    ("nl", Language::Dutch),
+    ("sv", Language::Swedish),
+    ("fi", Language::Finnish),
+    ("da", Language::Danish),
+    ("no", Language::Norwegian),
+    ("ar", Language::Arabic),
+    ("hu", Language::Hungarian),
+    ("el", Language::Greek),
+    ("ro", Language::Romanian),
+    ("tr", Language::Turkish),
+];
+
+/// Map a language code string (e.g. "en", "ru") to a canonical 2-letter code.
+fn canonical_lang_code(code: &str) -> &'static str {
     match code.to_lowercase().as_str() {
-        "ru" | "russian" => Language::Russian,
-        "de" | "german" => Language::German,
-        "fr" | "french" => Language::French,
-        "es" | "spanish" => Language::Spanish,
-        "it" | "italian" => Language::Italian,
-        "pt" | "portuguese" => Language::Portuguese,
-        "nl" | "dutch" => Language::Dutch,
-        "sv" | "swedish" => Language::Swedish,
-        "fi" | "finnish" => Language::Finnish,
-        "da" | "danish" => Language::Danish,
-        "no" | "norwegian" => Language::Norwegian,
-        "ar" | "arabic" => Language::Arabic,
-        "hu" | "hungarian" => Language::Hungarian,
-        "el" | "greek" => Language::Greek,
-        "ro" | "romanian" => Language::Romanian,
-        "tr" | "turkish" => Language::Turkish,
-        _ => Language::English, // default / "en"
+        "ru" | "russian" => "ru",
+        "de" | "german" => "de",
+        "fr" | "french" => "fr",
+        "es" | "spanish" => "es",
+        "it" | "italian" => "it",
+        "pt" | "portuguese" => "pt",
+        "nl" | "dutch" => "nl",
+        "sv" | "swedish" => "sv",
+        "fi" | "finnish" => "fi",
+        "da" | "danish" => "da",
+        "no" | "norwegian" => "no",
+        "ar" | "arabic" => "ar",
+        "hu" | "hungarian" => "hu",
+        "el" | "greek" => "el",
+        "ro" | "romanian" => "ro",
+        "tr" | "turkish" => "tr",
+        _ => "en", // default
     }
 }
 
-/// Register language analyzers for all 17 supported languages.
+/// Per-language tokenizer name used in the schema.
+fn lang_tokenizer_name(code: &str) -> String {
+    format!("content_{code}")
+}
+
+/// Register all language analyzers on the index's tokenizer manager.
+///
+/// Called once in `open()` and never again — this makes the tokenizer
+/// registry immutable after initialization, which is required for
+/// thread safety when multiple threads index and search concurrently.
 fn register_language_analyzers(index: &Index) {
-    let languages: &[(&str, Language)] = &[
-        ("lang_en", Language::English),
-        ("lang_ru", Language::Russian),
-        ("lang_de", Language::German),
-        ("lang_fr", Language::French),
-        ("lang_es", Language::Spanish),
-        ("lang_it", Language::Italian),
-        ("lang_pt", Language::Portuguese),
-        ("lang_nl", Language::Dutch),
-        ("lang_sv", Language::Swedish),
-        ("lang_fi", Language::Finnish),
-        ("lang_da", Language::Danish),
-        ("lang_no", Language::Norwegian),
-        ("lang_ar", Language::Arabic),
-        ("lang_hu", Language::Hungarian),
-        ("lang_el", Language::Greek),
-        ("lang_ro", Language::Romanian),
-        ("lang_tr", Language::Turkish),
-    ];
-    for (name, lang) in languages {
-        index.tokenizers().register(name, build_analyzer(*lang));
+    for (code, lang) in LANGUAGES {
+        index
+            .tokenizers()
+            .register(&lang_tokenizer_name(code), build_analyzer(*lang));
     }
-    // Default content tokenizer (English).
-    index
-        .tokenizers()
-        .register(CONTENT_TOKENIZER, build_analyzer(Language::English));
 }
 
-/// Build the schema used by the full-text store.
-fn build_schema() -> (Schema, tantivy::schema::Field, tantivy::schema::Field, tantivy::schema::Field, tantivy::schema::Field) {
-    let mut schema_builder = Schema::builder();
+/// Build a fresh, standalone `TokenizerManager` containing all language
+/// analyzers. Used to construct per-search `QueryParser` instances without
+/// touching the shared index tokenizer registry.
+fn build_local_tokenizer_manager() -> TokenizerManager {
+    // Start with a completely new manager (not cloned from the index),
+    // so mutations here do NOT affect the shared registry.
+    let manager = TokenizerManager::new();
+    for (code, lang) in LANGUAGES {
+        manager.register(&lang_tokenizer_name(code), build_analyzer(*lang));
+    }
+    manager
+}
 
-    let f_chunk_id = schema_builder.add_text_field("chunk_id", STRING | STORED);
-    let f_doc_id = schema_builder.add_text_field("doc_id", STRING | STORED);
-    let f_language = schema_builder.add_text_field("language", STRING | STORED);
+/// Full-text search store backed by tantivy.
+///
+/// Thread-safety contract
+/// ──────────────────────
+/// All language analyzers are pre-registered in `open()` and the tokenizer
+/// registry is never mutated after that point.  `add_chunk()` selects the
+/// correct per-language indexed field (schema-configured at creation time),
+/// and `search()` builds a throwaway local `TokenizerManager` for its
+/// `QueryParser` so it never touches the shared registry.
+pub struct TantivyStore {
+    index: Index,
+    reader: IndexReader,
+    writer: Arc<RwLock<IndexWriter>>,
+    f_chunk_id: tantivy::schema::Field,
+    f_doc_id: tantivy::schema::Field,
+    /// Per-language content fields: maps canonical 2-letter code → Field.
+    /// Each field is indexed with the matching language stemmer and is NOT
+    /// stored (the stored copy lives in `f_content_stored`).
+    lang_content_fields: HashMap<&'static str, tantivy::schema::Field>,
+    /// Stored-only copy of the raw content text (for future retrieval).
+    f_content_stored: tantivy::schema::Field,
+}
 
-    // Content field uses our named tokenizer so we can swap it per-query.
-    let content_options = TextOptions::default()
-        .set_indexing_options(
+/// Build the schema.
+///
+/// Returns the schema plus the field handles needed by `TantivyStore`.
+fn build_schema() -> (
+    Schema,
+    tantivy::schema::Field,
+    tantivy::schema::Field,
+    HashMap<&'static str, tantivy::schema::Field>,
+    tantivy::schema::Field,
+) {
+    let mut builder = Schema::builder();
+
+    let f_chunk_id = builder.add_text_field("chunk_id", STRING | STORED);
+    let f_doc_id = builder.add_text_field("doc_id", STRING | STORED);
+
+    // One indexed-but-not-stored field per language.
+    let mut lang_content_fields = HashMap::new();
+    for (code, _lang) in LANGUAGES {
+        let tokenizer = lang_tokenizer_name(code);
+        let opts = TextOptions::default().set_indexing_options(
             TextFieldIndexing::default()
-                .set_tokenizer(CONTENT_TOKENIZER)
+                .set_tokenizer(&tokenizer)
                 .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-        )
-        .set_stored();
+        );
+        let field = builder.add_text_field(&format!("content_{code}"), opts);
+        lang_content_fields.insert(*code, field);
+    }
 
-    let f_content = schema_builder.add_text_field("content", content_options);
-    let schema = schema_builder.build();
+    // Stored-only content field for raw text retrieval (no indexing).
+    let f_content_stored = builder.add_text_field("content", STORED);
 
-    (schema, f_chunk_id, f_doc_id, f_content, f_language)
+    let schema = builder.build();
+    (schema, f_chunk_id, f_doc_id, lang_content_fields, f_content_stored)
 }
 
 impl TantivyStore {
     /// Open (or create) a tantivy index at the given directory path.
     pub fn open(index_path: &str) -> anyhow::Result<Self> {
-        let (schema, f_chunk_id, f_doc_id, f_content, f_language) = build_schema();
+        let (schema, f_chunk_id, f_doc_id, lang_content_fields, f_content_stored) =
+            build_schema();
 
-        // Ensure the directory exists.
         let path = Path::new(index_path);
         std::fs::create_dir_all(path)
             .with_context(|| format!("Failed to create index directory: {index_path}"))?;
@@ -132,7 +175,7 @@ impl TantivyStore {
         let index = Index::open_or_create(dir, schema)
             .with_context(|| "Failed to open or create tantivy index")?;
 
-        // Register all language analyzers on the freshly opened index.
+        // Register all language analyzers once at open time — never again.
         register_language_analyzers(&index);
 
         let reader = index
@@ -141,7 +184,6 @@ impl TantivyStore {
             .try_into()
             .context("Failed to build IndexReader")?;
 
-        // 50 MB heap budget.
         let writer: IndexWriter = index
             .writer(50 * 1024 * 1024)
             .context("Failed to create IndexWriter")?;
@@ -152,12 +194,16 @@ impl TantivyStore {
             writer: Arc::new(RwLock::new(writer)),
             f_chunk_id,
             f_doc_id,
-            f_content,
-            f_language,
+            lang_content_fields,
+            f_content_stored,
         })
     }
 
     /// Add a chunk to the index (buffered; call [`commit`] to persist).
+    ///
+    /// The content is indexed using the language-specific stemmer field that
+    /// was configured at schema creation time.  No tokenizer re-registration
+    /// occurs here, making this method safe to call from multiple threads.
     pub fn add_chunk(
         &self,
         chunk_id: &str,
@@ -165,22 +211,28 @@ impl TantivyStore {
         language: &str,
         content: &str,
     ) -> anyhow::Result<()> {
-        // Register the language-specific analyzer as CONTENT_TOKENIZER so
-        // it is used during indexing of this chunk.
-        let lang = lang_from_code(language);
-        self.index
-            .tokenizers()
-            .register(CONTENT_TOKENIZER, build_analyzer(lang));
+        let code = canonical_lang_code(language);
+        let lang_field = self
+            .lang_content_fields
+            .get(code)
+            .copied()
+            .unwrap_or_else(|| *self.lang_content_fields.get("en").unwrap());
 
+        // Index into the language-specific field; also store in the plain
+        // content field for raw-text retrieval.
         let document = doc!(
-            self.f_chunk_id => chunk_id,
-            self.f_doc_id   => doc_id,
-            self.f_language => language,
-            self.f_content  => content
+            self.f_chunk_id      => chunk_id,
+            self.f_doc_id        => doc_id,
+            lang_field           => content,
+            self.f_content_stored => content
         );
 
-        let w = self.writer.read().map_err(|e| anyhow::anyhow!("Writer lock poisoned: {e}"))?;
-        w.add_document(document).context("Failed to add document to tantivy")?;
+        let w = self
+            .writer
+            .read()
+            .map_err(|e| anyhow::anyhow!("Writer lock poisoned: {e}"))?;
+        w.add_document(document)
+            .context("Failed to add document to tantivy")?;
         Ok(())
     }
 
@@ -191,8 +243,9 @@ impl TantivyStore {
             .write()
             .map_err(|e| anyhow::anyhow!("Writer lock poisoned: {e}"))?;
         w.commit().context("Failed to commit tantivy writer")?;
-        // Explicitly reload the reader so tests using Manual/OnCommit see fresh data.
-        self.reader.reload().context("Failed to reload tantivy reader")?;
+        self.reader
+            .reload()
+            .context("Failed to reload tantivy reader")?;
         Ok(())
     }
 
@@ -210,6 +263,9 @@ impl TantivyStore {
     /// Search the index for `query_text` using the stemmer for `language`.
     ///
     /// Returns at most `top_k` results sorted by BM25 score (descending).
+    ///
+    /// Thread safety: a fresh local `TokenizerManager` is built for each
+    /// call so the shared index tokenizer registry is never mutated.
     pub fn search(
         &self,
         query_text: &str,
@@ -220,15 +276,26 @@ impl TantivyStore {
             return Ok(vec![]);
         }
 
-        // Swap the content tokenizer to the requested language before parsing.
-        let lang = lang_from_code(language);
-        self.index
-            .tokenizers()
-            .register(CONTENT_TOKENIZER, build_analyzer(lang));
+        let code = canonical_lang_code(language);
+        let lang_field = self
+            .lang_content_fields
+            .get(code)
+            .copied()
+            .unwrap_or_else(|| *self.lang_content_fields.get("en").unwrap());
 
         let searcher = self.reader.searcher();
 
-        let query_parser = QueryParser::for_index(&self.index, vec![self.f_content]);
+        // Build a local (non-shared) TokenizerManager so we never touch the
+        // shared registry.  QueryParser::new() accepts any TokenizerManager,
+        // so we can use the per-language analyzer for query tokenization
+        // without data races.
+        let local_tokenizers = build_local_tokenizer_manager();
+        let query_parser = QueryParser::new(
+            self.index.schema(),
+            vec![lang_field],
+            local_tokenizers,
+        );
+
         let query = query_parser
             .parse_query(query_text)
             .map_err(|e| anyhow::anyhow!("Query parse error: {e:?}"))?;
@@ -264,10 +331,13 @@ impl TantivyStore {
                 .writer
                 .write()
                 .map_err(|e| anyhow::anyhow!("Writer lock poisoned: {e}"))?;
-            w.delete_all_documents().context("Failed to delete all documents")?;
+            w.delete_all_documents()
+                .context("Failed to delete all documents")?;
             w.commit().context("Failed to commit after clear")?;
         }
-        self.reader.reload().context("Failed to reload reader after clear")?;
+        self.reader
+            .reload()
+            .context("Failed to reload reader after clear")?;
         Ok(())
     }
 }

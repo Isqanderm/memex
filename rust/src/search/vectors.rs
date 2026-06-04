@@ -162,6 +162,10 @@ impl VectorStore {
 
     /// Find similar memories using a cosine-similarity threshold.
     ///
+    /// **Assumes unit-normalized embeddings** (as produced by multilingual-e5).
+    /// For unit vectors, L2 distance and cosine distance are equivalent up to a
+    /// monotone transformation, so the approximation used here is exact.
+    ///
     /// **Note:** The virtual tables use the default L2 distance metric.
     /// `similarity_threshold` (0–1 cosine similarity) is converted to an L2
     /// distance bound via `dist_threshold = 1.0 - similarity_threshold` as a
