@@ -11,3 +11,4 @@ data/uploads/*
 .superpowers/
 docs/superpowers/
 PIPELINE.md
+.claude/worktrees/
