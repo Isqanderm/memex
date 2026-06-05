@@ -68,7 +68,9 @@ Download the binary from [GitHub Releases](https://github.com/Isqanderm/memex/re
 curl -LO https://github.com/Isqanderm/memex/releases/latest/download/memex-linux-amd64
 chmod +x memex-linux-amd64
 
-# Linux ARM64 (Raspberry Pi 4/5) — use Docker option instead, binary coming soon
+# Linux ARM64 (Raspberry Pi 4/5)
+curl -LO https://github.com/Isqanderm/memex/releases/latest/download/memex-linux-arm64
+chmod +x memex-linux-arm64
 
 # Create data directories
 mkdir -p data/uploads data/tantivy

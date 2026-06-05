@@ -8,17 +8,19 @@ on:
 jobs:
   build:
     name: Build ${{ matrix.artifact }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
 
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
             artifact: memex-linux-amd64
-          # ARM64 binary: use Docker image (ghcr.io/.../memex:rust-latest) for Raspberry Pi
-          # Binary cross-compilation pending native ARM64 runner support
+          - runner: ubuntu-24.04-arm   # Native ARM64 runner — no cross-compilation
+            target: aarch64-unknown-linux-gnu
+            artifact: memex-linux-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -30,20 +32,18 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             rust/target
-          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('rust/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-${{ matrix.target }}-
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --manifest-path rust/Cargo.toml --target ${{ matrix.target }}
+        run: cargo build --release --manifest-path rust/Cargo.toml
 
       - name: Rename binary
         run: |
-          cp rust/target/${{ matrix.target }}/release/memex ${{ matrix.artifact }}
+          cp rust/target/release/memex ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
 
       - name: Upload artifact
@@ -94,6 +94,7 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           files: |
             artifacts/memex-linux-amd64/memex-linux-amd64
+            artifacts/memex-linux-arm64/memex-linux-arm64
           tag_name: ${{ github.ref_name }}
 
   docker:
