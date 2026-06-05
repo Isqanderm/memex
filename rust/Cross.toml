@@ -1,6 +1,5 @@
 [target.aarch64-unknown-linux-gnu]
-pre-build = [
-    "dpkg --add-architecture arm64",
-    "apt-get update -qq",
-    "apt-get install -y libssl-dev:arm64",
-]
+pre-build = []
+
+[target.aarch64-unknown-linux-gnu.env]
+passthrough = ["OPENSSL_VENDORED"]
