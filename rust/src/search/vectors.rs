@@ -309,9 +309,9 @@ mod tests {
         let t = (2.0_f32 * (1.0 - 1.0_f32)).sqrt();
         assert!((t - 0.0).abs() < 1e-6);
 
-        // cosine=0.0 (orthogonal) → L2=sqrt(2)≈1.414
+        // cosine=0.0 (orthogonal) → L2=sqrt(2)
         let t = (2.0_f32 * (1.0 - 0.0_f32)).sqrt();
-        assert!((t - 1.4142135).abs() < 1e-4);
+        assert!((t - std::f32::consts::SQRT_2).abs() < 1e-4);
 
         // cosine=0.60 → L2≈0.894, NOT 0.40
         let t = (2.0_f32 * (1.0 - 0.6_f32)).sqrt();
