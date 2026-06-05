@@ -44,12 +44,15 @@ pub struct MemoryItem {
     pub source: String,
     pub category: Option<String>,
     pub project: Option<String>,
+    pub relation: Option<String>,
     pub created_at: String,
 }
 
 #[derive(Serialize)]
 pub struct ProfileResponse {
+    #[serde(rename = "static")]
     pub static_summary: String,
+    #[serde(rename = "dynamic")]
     pub dynamic_summary: String,
     pub raw_count: usize,
 }
@@ -143,6 +146,7 @@ async fn list_memories_handler(
             source: m.source,
             category: m.category,
             project: m.project,
+            relation: m.relation,
             created_at: m.created_at,
         })
         .collect();

@@ -4,13 +4,9 @@ import pytest
 
 
 def _assert_context_shape(data: dict) -> None:
-    """Accept both Python ({static, dynamic}) and Rust ({static_summary, dynamic_summary}) shapes."""
     assert "raw_count" in data, f"Missing 'raw_count' in context: {data}"
-    has_python = "static" in data and "dynamic" in data
-    has_rust = "static_summary" in data and "dynamic_summary" in data
-    assert has_python or has_rust, (
-        f"Context must have (static+dynamic) or (static_summary+dynamic_summary), got: {list(data.keys())}"
-    )
+    assert "static" in data, f"Missing 'static' in context: {data}"
+    assert "dynamic" in data, f"Missing 'dynamic' in context: {data}"
 
 
 def _assert_delete_memory_ok(resp: httpx.Response) -> None:
