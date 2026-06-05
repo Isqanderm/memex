@@ -54,10 +54,4 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 - Idle RAM: ~80-120 MB (vs ~2.5 GB Python+PostgreSQL)
 - Cold start: ~2-3 seconds including model loading
 
-### Known differences from Python version
-
-- `GET /api/memory/context` returns `static_summary`/`dynamic_summary` (Python: `static`/`dynamic`)
-- `POST /api/search/chunks` returns array directly (Python: `{"chunks": [...]}`)
-- `DELETE /api/memory/:id` returns 204 No Content (Python: `{"status": "deleted"}`)
-- No `PATCH /api/documents/:id` endpoint
-- No `GET /api/documents/:id/file` endpoint
+All API differences from Python were resolved in [3.0.0-rc.1](#300-rc1--2026-06-05).

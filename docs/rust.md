@@ -217,11 +217,7 @@ Add to `.claude/settings.json`:
 
 ## API
 
-The Rust version exposes the same REST API as the Python version. See [REST API docs](../README.md#rest-api) for usage examples.
-
-**Notable differences from Python:**
-- `POST /api/search/chunks` — returns array directly (Python wraps in `{"chunks": [...]}`)
-- `DELETE /api/memory/:id` — returns `204 No Content` (Python returns `{"status": "deleted"}`)
+The Rust version exposes the same REST API as the Python version with identical request/response shapes. See [REST API docs](../README.md#rest-api) for usage examples.
 
 ---
 
