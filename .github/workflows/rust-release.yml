@@ -97,42 +97,6 @@ jobs:
             artifacts/memex-linux-arm64/memex-linux-arm64
           tag_name: ${{ github.ref_name }}
 
-  docker:
-    name: Docker image (rust-)
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        run: |
-          VERSION="${GITHUB_REF_NAME#rust/v}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: rust/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}:rust-${{ env.VERSION }}
-            ghcr.io/${{ env.REPO_LOWER }}:rust-latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+  # Docker image intentionally omitted — the Rust edition ships as a standalone binary.
+  # Users deploy via the pre-built binary (memex-linux-amd64 / memex-linux-arm64),
+  # not Docker. See docs/rust.md for installation instructions.
