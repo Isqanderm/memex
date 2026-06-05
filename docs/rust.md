@@ -61,29 +61,30 @@ First run downloads ONNX embedding (~90 MB) and reranker (~100 MB) models. Subse
 
 ### Option B: Pre-built binary (Linux)
 
-Download the binary from [GitHub Releases](https://github.com/Isqanderm/memex/releases) and run directly:
+Download the latest binary from [GitHub Releases](https://github.com/Isqanderm/memex/releases) (look for the `rust/v*` tag):
 
 ```bash
 # Linux x86_64
-curl -LO https://github.com/Isqanderm/memex/releases/latest/download/memex-linux-amd64
-chmod +x memex-linux-amd64
+curl -L https://github.com/Isqanderm/memex/releases/download/rust%2Fv3.0.0-rc.1/memex-linux-amd64 -o memex
+chmod +x memex
 
 # Linux ARM64 (Raspberry Pi 4/5)
-curl -LO https://github.com/Isqanderm/memex/releases/latest/download/memex-linux-arm64
-chmod +x memex-linux-arm64
+curl -L https://github.com/Isqanderm/memex/releases/download/rust%2Fv3.0.0-rc.1/memex-linux-arm64 -o memex
+chmod +x memex
 
 # Create data directories
 mkdir -p data/uploads data/tantivy
 
-# Copy and fill .env
-curl -O https://raw.githubusercontent.com/Isqanderm/memex/main/rust/.env.example
-cp rust/.env.example .env
-# edit .env with your API keys
+# Download .env template
+curl -L https://raw.githubusercontent.com/Isqanderm/memex/main/rust/.env.example -o .env
+# Edit .env — add your LLM API key (ANTHROPIC_API_KEY or OPENAI_LLM_API_KEY)
 
 # Run
-./memex-linux-amd64   # or memex-linux-arm64 on RPi
+./memex
 # → http://localhost:8000
 ```
+
+On first start, the binary downloads ONNX models (~200 MB) to `~/.cache/huggingface`. Subsequent starts take 2–3 seconds.
 
 ### Option C: Raspberry Pi systemd service
 
