@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
+use axum::body::Body;
 use axum::extract::{Multipart, Path, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Serialize;
@@ -37,6 +38,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/documents", post(upload_document))
         .route("/api/documents", get(list_documents))
         .route("/api/documents/:id", delete(delete_document))
+        .route("/api/documents/:id/file", get(get_document_file))
 }
 
 async fn upload_document(
@@ -202,6 +204,58 @@ async fn delete_document(
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_document_file(
+    State(state): State<AppState>,
+    Path(doc_id): Path<String>,
+) -> Result<Response<Body>, AppError> {
+    let pool = state.pool.clone();
+    let doc_id_clone = doc_id.clone();
+
+    let doc = tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(AppError::Pool)?;
+        let doc_repo = DocumentRepository::new(&conn);
+        doc_repo
+            .get_by_id(&doc_id_clone)
+            .map_err(AppError::Db)?
+            .ok_or_else(|| AppError::NotFound(format!("document {doc_id_clone}")))
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+
+    let file_bytes = tokio::fs::read(&doc.source)
+        .await
+        .map_err(|e| AppError::Io(e))?;
+
+    let mime = mime_guess::from_path(&doc.source)
+        .first_or_octet_stream()
+        .to_string();
+
+    let filename = std::path::Path::new(&doc.source)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("download")
+        .to_string();
+
+    // Strip checksum prefix "{16chars}-" if present
+    let display_name = if filename.len() > 17 && filename.chars().nth(16) == Some('-') {
+        filename[17..].to_string()
+    } else {
+        filename
+    };
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{display_name}\""),
+        )
+        .body(Body::from(file_bytes))
+        .map_err(|e| AppError::Parse(format!("response build error: {e}")))?;
+
+    Ok(response)
 }
 
 #[cfg(test)]
