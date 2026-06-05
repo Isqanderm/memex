@@ -8,6 +8,19 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![pgvector](https://img.shields.io/badge/pgvector-PostgreSQL-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![MCP](https://img.shields.io/badge/MCP-Claude_Code-orange)](https://docs.anthropic.com/en/docs/claude-code/mcp)
+[![Rust](https://img.shields.io/badge/rust-edition-orange?logo=rust)](docs/rust.md)
+
+---
+
+## Two editions
+
+| | Python | Rust |
+|---|---|---|
+| **Best for** | Full-featured, scalable | Low-RAM servers, Raspberry Pi |
+| **RAM** | ~2.5 GB | ~80–120 MB |
+| **Dependencies** | Docker + PostgreSQL | Single binary |
+| **Quick start** | `docker compose up` | `./memex` |
+| **Docs** | This file | [docs/rust.md](docs/rust.md) |
 
 ---
 
