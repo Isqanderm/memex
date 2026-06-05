@@ -184,7 +184,7 @@ async fn context_handler(
 async fn forget_handler(
     State(state): State<AppState>,
     Path(memory_id): Path<String>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let pool = state.pool.clone();
     let memory_svc = state.memory_svc.clone();
     let memory_id_clone = memory_id.clone();
@@ -199,7 +199,7 @@ async fn forget_handler(
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
 
     if found {
-        Ok(StatusCode::NO_CONTENT)
+        Ok(Json(serde_json::json!({"status": "deleted"})))
     } else {
         Err(AppError::NotFound(format!("memory {memory_id}")))
     }

@@ -61,10 +61,15 @@ async fn query_handler(
     }))
 }
 
+#[derive(Serialize)]
+struct ChunksResponse {
+    chunks: Vec<ChunkHit>,
+}
+
 async fn search_chunks_handler(
     State(state): State<AppState>,
     Json(body): Json<QueryRequest>,
-) -> Result<Json<Vec<ChunkHit>>, AppError> {
+) -> Result<Json<ChunksResponse>, AppError> {
     let pool = state.pool.clone();
     let embed = state.embed.clone();
     let vectors = state.vectors.clone();
@@ -114,5 +119,5 @@ async fn search_chunks_handler(
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
 
-    Ok(Json(hits))
+    Ok(Json(ChunksResponse { chunks: hits }))
 }

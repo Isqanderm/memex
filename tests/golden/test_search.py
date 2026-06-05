@@ -1,17 +1,12 @@
 # tests/golden/test_search.py
-from typing import Any
-
 import httpx
 import pytest
 
 
-def _extract_chunks(data: Any) -> list:
-    """Rust returns a list directly; Python wraps in {chunks: [...]}."""
-    if isinstance(data, list):
-        return data  # Rust
-    if isinstance(data, dict) and "chunks" in data:
-        return data["chunks"]  # Python
-    pytest.fail(f"Unexpected /api/search/chunks response shape: {type(data).__name__}: {data!r}")
+def _extract_chunks(data: dict) -> list:
+    """Both backends return {"chunks": [...]}."""
+    assert "chunks" in data, f"Missing 'chunks' key in response: {data!r}"
+    return data["chunks"]
 
 
 @pytest.mark.golden

@@ -10,11 +10,8 @@ def _assert_context_shape(data: dict) -> None:
 
 
 def _assert_delete_memory_ok(resp: httpx.Response) -> None:
-    """Accept 204 No Content (Rust) or 200 {status: deleted} (Python)."""
-    assert resp.status_code in (200, 204), f"Unexpected delete status: {resp.status_code}"
-    if resp.status_code == 200:
-        data = resp.json()
-        assert data.get("status") == "deleted", f"Expected status=deleted, got: {data}"
+    assert resp.status_code == 200, f"Unexpected delete status: {resp.status_code}"
+    assert resp.json().get("status") == "deleted", f"Expected status=deleted, got: {resp.json()}"
 
 
 @pytest.mark.golden
