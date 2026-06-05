@@ -13,17 +13,23 @@ pub struct MemoryExpiryWorker {
 }
 
 impl MemoryExpiryWorker {
-    pub async fn run(&self, shutdown: tokio::sync::watch::Receiver<bool>) {
+    pub async fn run(&self, mut shutdown: tokio::sync::watch::Receiver<bool>) {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(self.interval_secs)).await;
+            // Wake up either when the interval fires OR when shutdown is signalled —
+            // whichever comes first. Without select!, a 1-hour sleep would ignore SIGTERM.
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_secs(self.interval_secs)) => {}
+                _ = shutdown.changed() => {
+                    info!("MemoryExpiryWorker: shutdown signal received, stopping.");
+                    break;
+                }
+            }
 
-            // Check for shutdown signal
             if *shutdown.borrow() {
                 info!("MemoryExpiryWorker: shutdown signal received, stopping.");
                 break;
             }
 
-            // Run expire_stale via spawn_blocking to avoid blocking the async runtime
             let pool = Arc::clone(&self.pool);
             let svc = Arc::clone(&self.svc);
 
@@ -45,12 +51,6 @@ impl MemoryExpiryWorker {
                 Err(e) => {
                     error!("MemoryExpiryWorker: spawn_blocking panicked: {e}");
                 }
-            }
-
-            // Check shutdown again after work
-            if shutdown.has_changed().unwrap_or(false) && *shutdown.borrow() {
-                info!("MemoryExpiryWorker: shutdown signal received after work, stopping.");
-                break;
             }
         }
     }
