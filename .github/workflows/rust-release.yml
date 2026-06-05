@@ -1,0 +1,110 @@
+name: Rust Release
+
+on:
+  push:
+    tags:
+      - 'rust/v[0-9]*.[0-9]*.[0-9]*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: memex-linux-amd64
+          - runner: ubuntu-24.04-arm   # Native ARM64 runner — no cross-compilation
+            target: aarch64-unknown-linux-gnu
+            artifact: memex-linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release --manifest-path rust/Cargo.toml --bins
+
+      - name: Rename binaries
+        run: |
+          cp rust/target/release/memex ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }}
+          MCP_ARTIFACT=$(echo "${{ matrix.artifact }}" | sed 's/^memex-/memex-mcp-/')
+          cp rust/target/release/memex-mcp $MCP_ARTIFACT
+          chmod +x $MCP_ARTIFACT
+          echo "MCP_ARTIFACT=$MCP_ARTIFACT" >> $GITHUB_ENV
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ env.MCP_ARTIFACT }}
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Extract version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#rust/v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Read Rust CHANGELOG
+        id: changelog
+        run: |
+          python3 - << 'EOF'
+          import re, os
+          version = os.environ['VERSION']
+          text = open('rust/CHANGELOG.md').read()
+          pattern = rf'## \[{re.escape(version)}\].*?(?=\n## \[|\Z)'
+          match = re.search(pattern, text, re.DOTALL)
+          body = match.group(0).strip() if match else f'Rust release {version}'
+          delim = f'CHANGELOG_{version.replace(".", "_")}'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'body<<{delim}\n{body}\n{delim}\n')
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Rust ${{ env.VERSION }}"
+          body: ${{ steps.changelog.outputs.body }}
+          files: |
+            artifacts/memex-linux-amd64/memex-linux-amd64
+            artifacts/memex-linux-amd64/memex-mcp-linux-amd64
+            artifacts/memex-linux-arm64/memex-linux-arm64
+            artifacts/memex-linux-arm64/memex-mcp-linux-arm64
+          tag_name: ${{ github.ref_name }}
+
+  # Docker image intentionally omitted — the Rust edition ships as a standalone binary.
+  # Users deploy via the pre-built binary (memex-linux-amd64 / memex-linux-arm64),
+  # not Docker. See docs/rust.md for installation instructions.

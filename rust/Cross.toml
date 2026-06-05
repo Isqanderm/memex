@@ -1,0 +1,5 @@
+[target.aarch64-unknown-linux-gnu]
+pre-build = []
+
+[target.aarch64-unknown-linux-gnu.env]
+passthrough = ["OPENSSL_VENDORED"]

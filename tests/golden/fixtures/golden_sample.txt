@@ -1,0 +1,5 @@
+Golden test document for Memex regression suite.
+This file is used to verify upload, indexing, and search behaviour.
+It contains multiple sentences to enable chunking.
+The quick brown fox jumps over the lazy dog.
+Memex is a self-hosted RAG system for personal document retrieval.

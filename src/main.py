@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -122,6 +123,12 @@ from src.api import jobs as jobs_router  # noqa: E402
 from src.api import query as query_router  # noqa: E402
 from src.api.memories import router as memory_router  # noqa: E402
 from src.ui import pages as ui_router  # noqa: E402
+
+
+@app.get("/health", response_class=PlainTextResponse)
+async def health() -> str:
+    return "ok"
+
 
 app.include_router(docs_router.router, prefix="/api")
 app.include_router(query_router.router, prefix="/api")

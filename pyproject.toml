@@ -47,6 +47,7 @@ markers = [
     "unit: unit tests (no DB)",
     "integration: integration tests (requires Docker)",
     "e2e: end-to-end tests (requires API keys)",
+    "golden: API contract tests (requires running Memex, set MEMEX_BASE_URL)",
 ]
 
 [tool.ruff]

@@ -1,0 +1,118 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rust/**'
+      - 'tests/golden/**'
+      - 'tests/conftest.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rust/**'
+      - 'tests/golden/**'
+      - 'tests/conftest.py'
+
+jobs:
+  test:
+    name: Rust tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --manifest-path rust/Cargo.toml
+
+  golden:
+    name: Golden tests (contract)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust binary
+        run: cargo build --release --manifest-path rust/Cargo.toml
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install Python deps
+        run: uv sync --extra dev
+
+      - name: Create Rust .env
+        run: |
+          cat > .env << 'EOF'
+          DATABASE_PATH=data/memex.db
+          TANTIVY_PATH=data/tantivy
+          UPLOAD_DIR=data/uploads
+          LOCAL_EMBEDDING_MODEL=multilingual-e5-small
+          EMBEDDING_DIMENSIONS=384
+          LLM_PROVIDER=openai
+          LLM_MODEL=gpt-4o-mini
+          LLM_MAX_TOKENS=2048
+          LLM_TEMPERATURE=0.1
+          OPENAI_LLM_API_KEY=dummy-key-for-contract-tests
+          HOST=0.0.0.0
+          PORT=8000
+          EOF
+
+      - name: Start Rust backend
+        run: |
+          set -a && source .env && set +a
+          ./rust/target/release/memex &
+          echo "RUST_PID=$!" >> $GITHUB_ENV
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            sleep 2
+          done
+          curl -sf http://localhost:8000/health || { echo "Rust binary failed to start"; exit 1; }
+
+      - name: Run golden tests (unit, no LLM)
+        run: |
+          MEMEX_BASE_URL=http://localhost:8000 \
+            uv run pytest tests/golden/ -m "unit and not e2e" \
+            --tb=short -v \
+            --junitxml=test-results/golden-rust-ci.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: golden-test-results-rust
+          path: test-results/golden-rust-ci.xml

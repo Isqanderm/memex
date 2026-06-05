@@ -8,6 +8,19 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![pgvector](https://img.shields.io/badge/pgvector-PostgreSQL-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![MCP](https://img.shields.io/badge/MCP-Claude_Code-orange)](https://docs.anthropic.com/en/docs/claude-code/mcp)
+[![Rust](https://img.shields.io/badge/rust-edition-orange?logo=rust)](docs/rust.md)
+
+---
+
+## Two editions
+
+| | Python | Rust |
+|---|---|---|
+| **Best for** | Full-featured, scalable | Low-RAM servers, Raspberry Pi |
+| **RAM** | ~2.5 GB | ~80–120 MB |
+| **Dependencies** | Docker + PostgreSQL | Single binary |
+| **Quick start** | `docker compose up` | `./memex` |
+| **Docs** | This file | [docs/rust.md](docs/rust.md) |
 
 ---
 
@@ -108,6 +121,27 @@ Add to `.claude/settings.json`:
 
 **Document tools:** `index_file` · `check_indexing` · `list_memories`
 
+#### Rust version (memex-mcp)
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "command": "/absolute/path/to/memex-mcp",
+      "env": {
+        "DATABASE_PATH": "/path/to/data/memex.db",
+        "TANTIVY_PATH": "/path/to/data/tantivy",
+        "LLM_PROVIDER": "openai",
+        "LLM_MODEL": "gpt-4o-mini",
+        "OPENAI_LLM_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+`memex-mcp` is distributed alongside `memex` in each GitHub Release.
+
 ## Hermes Integration
 
 Use Memex as persistent memory for a Hermes agent.
@@ -145,6 +179,15 @@ uv run pytest tests/unit/ -v
 
 # Integration tests (requires Docker)
 uv run pytest tests/integration/ -v -m integration
+
+# Golden tests (contract regression suite — runs against a live instance)
+MEMEX_BASE_URL=http://localhost:8000 uv run pytest tests/golden/ -v -m unit
+
+# Run against both Python and Rust backends simultaneously
+bash scripts/run_golden_tests.sh
+
+# With LLM-dependent tests (requires API keys in .env)
+bash scripts/run_golden_tests.sh --e2e
 ```
 
 ## Stack

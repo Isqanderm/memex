@@ -1,0 +1,19 @@
+<div class="bot-bubble-wrap">
+  <div class="bot-avatar">⬡</div>
+  <div class="bot-bubble">
+    {{ answer }}
+    {% if sources %}
+    <div class="source-tags">
+      {% set seen = namespace(ids=[]) %}
+      {% for s in sources %}
+        {% if s.doc_id not in seen.ids %}
+          {% set seen.ids = seen.ids + [s.doc_id] %}
+          <a class="source-tag" href="/api/documents/{{ s.doc_id }}/file" target="_blank" rel="noopener">
+            📄 {% if s.filename %}{{ s.filename }}{% elif s.title and s.title != '(anonymous)' %}{{ s.title }}{% elif s.section %}{{ s.section }}{% else %}source {{ s.index }}{% endif %}{% if s.page %} · p. {{ s.page }}{% endif %}
+          </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>

@@ -2,7 +2,7 @@
 name: memex
 description: "Personal memory and RAG system — evolving facts about the user, document search, session context. Use at session start (context), during session (remember/recall), and at session end (observe)."
 license: MIT
-compatibility: Requires Memex running at http://memex:8000 via Docker. See https://github.com/Isqanderm/memex for setup.
+compatibility: Requires Memex running at http://localhost:8000. Deploy via Docker or standalone binary — see https://github.com/Isqanderm/memex for setup.
 metadata:
   author: Isqanderm
   version: "2.1.0"
@@ -107,12 +107,12 @@ Returns: `pending` / `processing` / `done` / `error`.
 
 ### mcp_memex_list_memories — List indexed documents
 
-No arguments. Returns all documents with id, title, tags, date.
+No arguments. Returns all indexed documents with id, title, mime_type, date.
 
-### mcp_memex_forget — Delete a memory or document
+### mcp_memex_forget — Delete a memory fact
 
 Arguments:
-- `doc_id` (required) — memory id (from `mcp_memex_memories`) or document id
+- `doc_id` (required) — memory id (from `mcp_memex_memories`)
 
 ---
 
@@ -142,4 +142,4 @@ mcp_memex_observe("<full conversation text>")
 - **`remember` is now synchronous** — no job_id, no polling. Returns immediately.
 - **`remember` has no title/tags** — facts are extracted automatically by LLM.
 - **Language** — query language should match stored content for best results.
-- Memex runs at `http://memex:8000` — internal Docker network only.
+
