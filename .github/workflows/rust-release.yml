@@ -112,6 +112,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#rust/v}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -131,7 +132,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:rust-${{ env.VERSION }}
-            ghcr.io/${{ github.repository }}:rust-latest
+            ghcr.io/${{ env.REPO_LOWER }}:rust-${{ env.VERSION }}
+            ghcr.io/${{ env.REPO_LOWER }}:rust-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
