@@ -7,6 +7,14 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ---
 
+## [3.0.0-rc.4] — 2026-06-05
+
+### Fixed
+
+- `MemoryExpiryWorker` now responds to shutdown immediately via `tokio::select!`; previously the worker waited up to `interval_secs` (up to 1 hour) before checking the shutdown signal
+
+---
+
 ## [3.0.0-rc.3] — 2026-06-05
 
 ### Fixed
