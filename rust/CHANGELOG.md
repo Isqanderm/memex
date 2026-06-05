@@ -7,6 +7,28 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ---
 
+## [3.0.0-rc.3] — 2026-06-05
+
+### Fixed
+
+- **L2/cosine distance math** — `find_similar_memories` now uses correct formula `sqrt(2*(1-cos))` for unit-normalized vectors; previous `1.0-cos` was 8× stricter causing valid memory updates to be stored as new facts
+- **Embedding dimension mismatch** — `insert_chunk`/`insert_memory` now return `Err` instead of panicking when embedding size doesn't match store dimensions
+- **Filename display in context** — source file names with 5+ dashes no longer get truncated; uses correct 16-char checksum prefix stripping
+- **Upload size limit** — `POST /api/documents` now enforces 100 MB body limit; previously unlimited upload could OOM the server
+- **LLM request timeout** — OpenAI and Claude clients now timeout after 120s; previously a hung LLM call would block all worker threads
+- **SQLite busy_timeout** — pool connections now set `PRAGMA busy_timeout=5000`; previously concurrent writes returned immediate `SQLITE_BUSY` (HTTP 500) instead of waiting
+
+### CI
+
+- `memex-mcp` binary now included in GitHub Release artifacts alongside `memex`
+
+### Docs
+
+- `docs/rust.md`: added `poppler-utils` installation note for PDF support in binary deployments
+
+
+---
+
 ## [3.0.0-rc.2] — 2026-06-05
 
 ### Fixed
