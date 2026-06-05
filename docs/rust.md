@@ -84,6 +84,13 @@ curl -L https://raw.githubusercontent.com/Isqanderm/memex/main/rust/.env.example
 # → http://localhost:8000
 ```
 
+> **PDF support** requires `poppler-utils` on the host system:
+> ```bash
+> # Debian / Ubuntu / Raspberry Pi OS
+> sudo apt-get install -y poppler-utils
+> ```
+> Without it, PDF uploads will fail silently. DOCX, MD, TXT, PPTX, XLSX, EPUB work without any system dependencies.
+
 On first start, the binary downloads ONNX models (~200 MB) to `~/.cache/huggingface`. Subsequent starts take 2–3 seconds.
 
 ### Option C: Raspberry Pi systemd service
