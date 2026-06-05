@@ -7,6 +7,23 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ---
 
+## [3.0.0-rc.2] — 2026-06-05
+
+### Fixed
+
+- `POST /api/search/chunks` now returns `{"chunks": [...]}` matching Python API (was: bare array)
+- `DELETE /api/memory/:id` now returns `{"status": "deleted"}` matching Python API (was: 204 No Content)
+- Rust `1.82` → `1.85` in Dockerfile (required for `edition2024` dependencies)
+- ARM64 binary: switched from cross-compilation to native `ubuntu-24.04-arm` runner — eliminates OpenSSL toolchain issues
+- Docker image tags lowercase (OCI requirement)
+
+### Changed
+
+- Removed `memex-migrate` binary and `tokio-postgres` dependency — PostgreSQL migration is out of scope for the Rust edition
+- `reqwest` switched to `rustls-tls` backend (no system OpenSSL required)
+
+---
+
 ## [3.0.0-rc.1] — 2026-06-05
 
 ### Added
