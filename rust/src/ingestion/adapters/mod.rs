@@ -1,6 +1,7 @@
 use std::path::Path;
 
 pub mod docx;
+pub mod epub;
 pub mod markdown;
 pub mod pdf;
 pub mod pptx;
@@ -8,6 +9,7 @@ pub mod text;
 pub mod xlsx;
 
 pub use docx::DocxAdapter;
+pub use epub::EpubAdapter;
 pub use markdown::MarkdownAdapter;
 pub use pdf::PdfAdapter;
 pub use pptx::PptxAdapter;
@@ -93,6 +95,7 @@ pub fn build_default_registry() -> AdapterRegistry {
     registry.register(DocxAdapter);
     registry.register(XlsxAdapter);
     registry.register(PptxAdapter);
+    registry.register(EpubAdapter);
     registry.register(MarkdownAdapter);
     registry.register(TextAdapter);
     registry

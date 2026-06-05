@@ -63,6 +63,7 @@ pulldown-cmark = "0.13"
 calamine = { version = "0.35", features = ["dates"] }
 zip = "0.6"
 quick-xml = "0.40"
+epub = "2"
 
 # Определение языка
 whichlang = "0.1"
