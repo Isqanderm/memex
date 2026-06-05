@@ -317,4 +317,28 @@ mod tests {
         let t = (2.0_f32 * (1.0 - 0.6_f32)).sqrt();
         assert!(t > 0.88 && t < 0.91, "expected ~0.894, got {t}");
     }
+
+    #[test]
+    fn insert_chunk_wrong_dimensions_returns_error() {
+        let store = make_store(); // DIMS=384
+        let (_dir, conn) = open_conn();
+        // Pass a 3-dim vector to a 384-dim store → must return Err, not panic
+        let bad_vec = vec![1.0_f32, 0.0, 0.0];
+        let result = store.insert_chunk(&conn, "chunk-bad", &bad_vec);
+        assert!(result.is_err(), "expected Err for wrong embedding size");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("mismatch") || err_msg.contains("384"),
+            "error should mention mismatch, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn insert_memory_wrong_dimensions_returns_error() {
+        let store = make_store();
+        let (_dir, conn) = open_conn();
+        let bad_vec = vec![1.0_f32; 128]; // wrong size
+        let result = store.insert_memory(&conn, "mem-bad", &bad_vec);
+        assert!(result.is_err(), "expected Err for wrong embedding size");
+    }
 }
