@@ -7,6 +7,31 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ---
 
+## [3.0.0-rc.1] — 2026-06-05
+
+### Added
+
+- `GET /api/documents/:id/file` — serve original uploaded file
+- `PATCH /api/documents/:id` — update document title
+- `GET /api/memory/list` now returns `relation` field
+- `GET /api/memory/context` now returns `static`/`dynamic` (aligned with Python API)
+- EPUB document adapter (via `epub` crate)
+- `memex-mcp` — native MCP server binary for Claude Code integration (9 tools: remember, recall, context, observe, memories, index_file, check_indexing, list_documents, forget)
+
+### Fixed
+
+- Upload filename collision: files now stored with checksum prefix to prevent overwrites
+- EPUB removed from UI until adapter was implemented; now re-added
+- `curl` added to Docker runtime image (required for healthcheck)
+- MCP `index_file`: store plain path instead of `file://` URI
+
+### Known intentional differences from Python version
+
+- `POST /api/search/chunks` returns array directly (Python: `{"chunks": [...]}`)
+- `DELETE /api/memory/:id` returns 204 No Content (Python: `{"status": "deleted"}`)
+
+---
+
 ## [3.0.0] — 2026-06-04
 
 ### Added
