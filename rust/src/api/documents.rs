@@ -102,9 +102,10 @@ async fn upload_document(
             });
         }
 
-        // Save file to upload directory
+        // Save file to upload directory — prefix with checksum to avoid filename collisions
         std::fs::create_dir_all(&upload_dir)?;
-        let dest_path: PathBuf = PathBuf::from(&upload_dir).join(&filename_clone);
+        let unique_name = format!("{}-{}", &checksum[..16], &filename_clone);
+        let dest_path: PathBuf = PathBuf::from(&upload_dir).join(&unique_name);
         std::fs::write(&dest_path, &bytes_clone)?;
 
         let source = dest_path.to_string_lossy().to_string();

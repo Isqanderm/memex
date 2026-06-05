@@ -16,12 +16,12 @@
     <div class="dropzone-title">Drop files here</div>
     <div class="dropzone-sub">or <strong>click to choose</strong></div>
     <div class="fmt-badges">
-      {% for fmt in ['PDF','DOCX','TXT','MD','PPTX','XLSX','EPUB'] %}
+      {% for fmt in ['PDF','DOCX','TXT','MD','PPTX','XLSX'] %}
         <span class="fmt-badge">{{ fmt }}</span>
       {% endfor %}
     </div>
     <input id="file-input" type="file"
-           accept=".pdf,.docx,.txt,.md,.pptx,.xlsx,.epub"
+           accept=".pdf,.docx,.txt,.md,.pptx,.xlsx"
            multiple style="display:none">
   </div>
 
