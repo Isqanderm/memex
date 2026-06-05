@@ -35,13 +35,13 @@ impl VectorStore {
         chunk_id: &str,
         embedding: &[f32],
     ) -> rusqlite::Result<()> {
-        assert_eq!(
-            embedding.len(),
-            self.dimensions,
-            "embedding length mismatch: expected {}, got {}",
-            self.dimensions,
-            embedding.len()
-        );
+        if embedding.len() != self.dimensions {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "embedding length mismatch: expected {}, got {}",
+                self.dimensions,
+                embedding.len()
+            )));
+        }
         let blob = f32_slice_to_bytes(embedding);
         conn.execute(
             "INSERT OR REPLACE INTO chunk_vectors (chunk_id, embedding) VALUES (?1, ?2)",
@@ -104,13 +104,13 @@ impl VectorStore {
         memory_id: &str,
         embedding: &[f32],
     ) -> rusqlite::Result<()> {
-        assert_eq!(
-            embedding.len(),
-            self.dimensions,
-            "embedding length mismatch: expected {}, got {}",
-            self.dimensions,
-            embedding.len()
-        );
+        if embedding.len() != self.dimensions {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "embedding length mismatch: expected {}, got {}",
+                self.dimensions,
+                embedding.len()
+            )));
+        }
         let blob = f32_slice_to_bytes(embedding);
         conn.execute(
             "INSERT OR REPLACE INTO memory_vectors (memory_id, embedding) VALUES (?1, ?2)",

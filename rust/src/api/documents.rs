@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use axum::body::Body;
-use axum::extract::{Multipart, Path, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
@@ -40,6 +40,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/documents/:id", delete(delete_document))
         .route("/api/documents/:id", patch(update_document))
         .route("/api/documents/:id/file", get(get_document_file))
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
 }
 
 async fn upload_document(

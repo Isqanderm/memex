@@ -95,8 +95,12 @@ impl ContextBuilder {
                     .as_deref()
                     .and_then(|s| s.split('/').next_back())
                     .map(|raw_name| {
-                        let parts: Vec<&str> = raw_name.splitn(6, '-').collect();
-                        parts.last().copied().unwrap_or(raw_name).to_string()
+                        // Files stored as "{16-char checksum}-{original_name}" — strip prefix
+                        if raw_name.len() > 17 && raw_name.chars().nth(16) == Some('-') {
+                            raw_name[17..].to_string()
+                        } else {
+                            raw_name.to_string()
+                        }
                     });
 
                 let preview: String = chunk.content.chars().take(200).collect();
@@ -185,7 +189,7 @@ mod tests {
             section_heading: None,
             page_number: None,
             doc_title: None,
-            doc_source: Some("store/aa-bb-cc-dd-ee-myfile.pdf".to_string()),
+            doc_source: Some("store/abcdef0123456789-myfile.pdf".to_string()),
         };
         let ctx = builder.build("q", &[chunk], &[], "2026-06-04");
         assert_eq!(ctx.sources[0]["filename"], "myfile.pdf");

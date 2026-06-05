@@ -16,7 +16,10 @@ pub struct OpenAiProvider {
 impl OpenAiProvider {
     pub fn new(api_key: String, model: String, max_tokens: u32, temperature: f32) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("failed to build reqwest client"),
             api_key,
             model,
             max_tokens,
