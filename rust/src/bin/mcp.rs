@@ -349,8 +349,8 @@ impl MemexMcpServer {
                 ));
             }
 
-            // Create new ingestion job
-            let source = format!("file://{path_str}");
+            // Create new ingestion job — store plain path (not URI) so the worker can use it directly
+            let source = path_str.to_string();
             job_repo
                 .create(&source, &checksum)
                 .map(|job_id| format!(

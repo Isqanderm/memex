@@ -227,7 +227,13 @@ async fn get_document_file(
 
     let file_bytes = tokio::fs::read(&doc.source)
         .await
-        .map_err(|e| AppError::Io(e))?;
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AppError::NotFound(format!("file not found on disk: {}", doc.source))
+            } else {
+                AppError::Io(e)
+            }
+        })?;
 
     let mime = mime_guess::from_path(&doc.source)
         .first_or_octet_stream()
@@ -246,12 +252,23 @@ async fn get_document_file(
         filename
     };
 
+    // Sanitize filename: remove control chars and quote/backslash characters to prevent header injection
+    let safe_name: String = display_name
+        .chars()
+        .filter(|c| !c.is_control() && *c != '"' && *c != '\\')
+        .collect();
+    let safe_name = if safe_name.is_empty() {
+        "download".to_string()
+    } else {
+        safe_name
+    };
+
     let response = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, mime)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{display_name}\""),
+            format!("attachment; filename=\"{safe_name}\""),
         )
         .body(Body::from(file_bytes))
         .map_err(|e| AppError::Parse(format!("response build error: {e}")))?;
@@ -283,14 +300,13 @@ async fn update_document(
         let conn = pool.get().map_err(AppError::Pool)?;
         let doc_repo = DocumentRepository::new(&conn);
 
-        let _doc = doc_repo
-            .get_by_id(&doc_id_clone)
-            .map_err(AppError::Db)?
-            .ok_or_else(|| AppError::NotFound(format!("document {doc_id_clone}")))?;
-
-        doc_repo
+        let updated = doc_repo
             .update_title(&doc_id_clone, title.as_deref())
             .map_err(AppError::Db)?;
+
+        if !updated {
+            return Err(AppError::NotFound(format!("document {doc_id_clone}")));
+        }
 
         Ok(UpdateDocumentResponse {
             id: doc_id_clone,
