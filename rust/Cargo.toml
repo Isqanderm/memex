@@ -12,10 +12,6 @@ name = "memex"
 path = "src/main.rs"
 
 [[bin]]
-name = "memex-migrate"
-path = "src/bin/migrate.rs"
-
-[[bin]]
 name = "memex-mcp"
 path = "src/bin/mcp.rs"
 
@@ -93,7 +89,6 @@ async-trait = "0.1"
 # Async stream macros
 async-stream = "0.3"
 
-tokio-postgres = { version = "0.7", default-features = false, features = ["runtime", "with-uuid-1", "with-serde_json-1"] }
 rmcp = { version = "1.7.0", features = ["server", "transport-io", "macros"] }
 schemars = "1.2.1"
 
