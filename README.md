@@ -108,6 +108,27 @@ Add to `.claude/settings.json`:
 
 **Document tools:** `index_file` · `check_indexing` · `list_memories`
 
+#### Rust version (memex-mcp)
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "command": "/absolute/path/to/memex-mcp",
+      "env": {
+        "DATABASE_PATH": "/path/to/data/memex.db",
+        "TANTIVY_PATH": "/path/to/data/tantivy",
+        "LLM_PROVIDER": "openai",
+        "LLM_MODEL": "gpt-4o-mini",
+        "OPENAI_LLM_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+`memex-mcp` is distributed alongside `memex` in each GitHub Release.
+
 ## Hermes Integration
 
 Use Memex as persistent memory for a Hermes agent.
