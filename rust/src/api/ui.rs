@@ -194,7 +194,7 @@ async fn search_html(
     let query = form.query.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get().map_err(|e| AppError::Pool(e))?;
+        let conn = pool.get().map_err(AppError::Pool)?;
         retrieval
             .query(&conn, &query, None)
             .map_err(|e| AppError::Llm(e.to_string()))

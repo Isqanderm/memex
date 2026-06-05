@@ -5,7 +5,6 @@ use crate::db::pool::DbPool;
 use crate::ingestion::embeddings::EmbeddingClient;
 use crate::memory::profile::ProfileService;
 use crate::memory::service::MemorySvc;
-use crate::search::reranker::Reranker;
 use crate::search::service::RetrievalService;
 use crate::search::tantivy_fts::TantivyStore;
 use crate::search::vectors::VectorStore;

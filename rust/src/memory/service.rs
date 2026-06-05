@@ -102,13 +102,12 @@ impl MemorySvc {
                                         relation = Some("updates".to_string());
                                     }
                                 }
-                                "extends" | "derives" => {
+                                "extends" | "derives"
                                     // Set parent only if not already set
-                                    if parent_id.is_none() {
+                                    if parent_id.is_none() => {
                                         parent_id = Some(rel.memory_id.clone());
                                         relation = Some(rel.relation.clone());
                                     }
-                                }
                                 _ => {} // "new" — no action needed
                             }
                         }
@@ -166,9 +165,8 @@ impl MemorySvc {
     ) -> anyhow::Result<bool> {
         let repo = MemoryRepository::new(conn);
         // Check that the memory exists
-        match repo.get_by_id(memory_id)? {
-            None => return Ok(false),
-            Some(_) => {}
+        if repo.get_by_id(memory_id)?.is_none() {
+            return Ok(false);
         }
 
         // Deactivate in the DB

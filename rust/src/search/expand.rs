@@ -26,7 +26,6 @@ pub fn expand_to_l2(conn: &Connection, hits: &[SearchHit]) -> rusqlite::Result<V
 mod tests {
     use super::*;
     use crate::db::pool::build_pool;
-    use crate::db::repositories::chunks::ChunkRepository;
     use crate::db::repositories::documents::DocumentRepository;
     use crate::search::rrf::SearchHit;
     use tempfile::tempdir;

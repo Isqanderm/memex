@@ -154,7 +154,7 @@ impl<'a> JobRepository<'a> {
              WHERE status IN ('pending', 'processing')
              ORDER BY created_at ASC",
         )?;
-        let rows = stmt.query_map([], |row| Self::row_to_job(row))?;
+        let rows = stmt.query_map([], Self::row_to_job)?;
         rows.collect()
     }
 

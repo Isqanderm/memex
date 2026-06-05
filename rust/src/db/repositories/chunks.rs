@@ -337,7 +337,7 @@ mod tests {
 
         // Look up the leaf by its ID
         let leaf_id = leaf_vectors[0].0.clone();
-        let fetched = repo.get_by_ids(&[leaf_id.clone()]).unwrap();
+        let fetched = repo.get_by_ids(std::slice::from_ref(&leaf_id)).unwrap();
         assert_eq!(fetched.len(), 1);
         assert_eq!(fetched[0].id, leaf_id);
         assert_eq!(fetched[0].chunk_role, "leaf");

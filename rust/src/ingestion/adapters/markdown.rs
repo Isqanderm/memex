@@ -115,10 +115,8 @@ pub fn split_by_headings(markdown: &str) -> Vec<Section> {
                     current.content_parts.push(code.into_string());
                 }
             }
-            Event::SoftBreak | Event::HardBreak => {
-                if !in_heading {
-                    current.content_parts.push("\n".to_string());
-                }
+            Event::SoftBreak | Event::HardBreak if !in_heading => {
+                current.content_parts.push("\n".to_string());
             }
             _ => {}
         }

@@ -93,7 +93,7 @@ impl ContextBuilder {
                 let filename = chunk
                     .doc_source
                     .as_deref()
-                    .and_then(|s| s.split('/').last())
+                    .and_then(|s| s.split('/').next_back())
                     .map(|raw_name| {
                         let parts: Vec<&str> = raw_name.splitn(6, '-').collect();
                         parts.last().copied().unwrap_or(raw_name).to_string()

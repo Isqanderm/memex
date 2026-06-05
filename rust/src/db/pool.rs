@@ -17,6 +17,7 @@ fn register_sqlite_vec() {
     // (linked via the `sqlite-vec` crate's `#[link(name = "sqlite_vec0")]`).
     use sqlite_vec::sqlite3_vec_init;
 
+    #[allow(clippy::missing_transmute_annotations)]
     unsafe {
         rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
             sqlite3_vec_init as *const (),

@@ -97,6 +97,7 @@ pub struct MemexMcpServer {
     memory_svc: Arc<MemorySvc>,
     retrieval_svc: Arc<RetrievalService>,
     profile_svc: Arc<ProfileService>,
+    #[allow(dead_code)]
     tool_router: rmcp::handler::server::router::tool::ToolRouter<Self>,
 }
 

@@ -186,9 +186,7 @@ fn parse_document_xml(xml_bytes: &[u8]) -> anyhow::Result<Vec<Section>> {
                     }
                     para_style = None;
                 }
-                if depth > 0 {
-                    depth -= 1;
-                }
+                depth = depth.saturating_sub(1);
             }
             Ok(Event::Text(ref e)) if in_para => {
                 if let Ok(t) = e.decode() {

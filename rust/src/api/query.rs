@@ -47,7 +47,7 @@ async fn query_handler(
     let memory_category = body.memory_category.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get().map_err(|e| AppError::Pool(e))?;
+        let conn = pool.get().map_err(AppError::Pool)?;
         retrieval
             .query(&conn, &query, memory_category.as_deref())
             .map_err(|e| AppError::Llm(e.to_string()))

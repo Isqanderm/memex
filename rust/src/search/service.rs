@@ -120,7 +120,7 @@ impl RetrievalService {
 /// Load a [`SearchHit`] from the DB for a vector search result.
 fn load_chunk_for_vector_hit(conn: &Connection, hit: &VectorHit) -> Option<SearchHit> {
     let repo = ChunkRepository::new(conn);
-    let chunks = repo.get_by_ids(&[hit.id.clone()]).ok()?;
+    let chunks = repo.get_by_ids(std::slice::from_ref(&hit.id)).ok()?;
     let chunk = chunks.into_iter().next()?;
 
     Some(SearchHit {
@@ -137,7 +137,7 @@ fn load_chunk_for_vector_hit(conn: &Connection, hit: &VectorHit) -> Option<Searc
 /// Load a [`SearchHit`] from the DB for an FTS search result.
 fn load_chunk_for_fts_hit(conn: &Connection, hit: &FtsHit) -> Option<SearchHit> {
     let repo = ChunkRepository::new(conn);
-    let chunks = repo.get_by_ids(&[hit.chunk_id.clone()]).ok()?;
+    let chunks = repo.get_by_ids(std::slice::from_ref(&hit.chunk_id)).ok()?;
     let chunk = chunks.into_iter().next()?;
 
     Some(SearchHit {

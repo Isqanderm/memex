@@ -49,10 +49,7 @@ impl DocumentAdapter for XlsxAdapter {
             for row in range.rows() {
                 let cells: Vec<String> = row
                     .iter()
-                    .map(|cell| match cell.as_string() {
-                        Some(s) => s,
-                        None => String::new(),
-                    })
+                    .map(|cell| cell.as_string().unwrap_or_default())
                     .collect();
                 let row_str = cells.join("\t");
                 // Empty and null cells are dropped — they add no textual content

@@ -25,6 +25,7 @@ impl<'a> MemoryRepository<'a> {
         Self { conn }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         &self,
         content: &str,
@@ -86,7 +87,7 @@ impl<'a> MemoryRepository<'a> {
              WHERE is_active = 1
              ORDER BY created_at DESC",
         )?;
-        let rows = stmt.query_map([], |row| Self::row_to_memory(row))?;
+        let rows = stmt.query_map([], Self::row_to_memory)?;
         rows.collect()
     }
 
