@@ -39,18 +39,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build
-        run: cargo build --release --manifest-path rust/Cargo.toml
+        run: cargo build --release --manifest-path rust/Cargo.toml --bins
 
-      - name: Rename binary
+      - name: Rename binaries
         run: |
           cp rust/target/release/memex ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
+          MCP_ARTIFACT=$(echo "${{ matrix.artifact }}" | sed 's/^memex-/memex-mcp-/')
+          cp rust/target/release/memex-mcp $MCP_ARTIFACT
+          chmod +x $MCP_ARTIFACT
+          echo "MCP_ARTIFACT=$MCP_ARTIFACT" >> $GITHUB_ENV
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ env.MCP_ARTIFACT }}
 
   release:
     name: GitHub Release
@@ -94,7 +100,9 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           files: |
             artifacts/memex-linux-amd64/memex-linux-amd64
+            artifacts/memex-linux-amd64/memex-mcp-linux-amd64
             artifacts/memex-linux-arm64/memex-linux-arm64
+            artifacts/memex-linux-arm64/memex-mcp-linux-arm64
           tag_name: ${{ github.ref_name }}
 
   # Docker image intentionally omitted — the Rust edition ships as a standalone binary.
