@@ -4,7 +4,7 @@ use axum::body::Body;
 use axum::extract::{Multipart, Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -38,6 +38,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/documents", post(upload_document))
         .route("/api/documents", get(list_documents))
         .route("/api/documents/:id", delete(delete_document))
+        .route("/api/documents/:id", patch(update_document))
         .route("/api/documents/:id/file", get(get_document_file))
 }
 
@@ -256,6 +257,50 @@ async fn get_document_file(
         .map_err(|e| AppError::Parse(format!("response build error: {e}")))?;
 
     Ok(response)
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateDocumentRequest {
+    title: Option<String>,
+}
+
+#[derive(Serialize)]
+struct UpdateDocumentResponse {
+    id: String,
+    title: Option<String>,
+}
+
+async fn update_document(
+    State(state): State<AppState>,
+    Path(doc_id): Path<String>,
+    Json(req): Json<UpdateDocumentRequest>,
+) -> Result<Json<UpdateDocumentResponse>, AppError> {
+    let pool = state.pool.clone();
+    let doc_id_clone = doc_id.clone();
+    let title = req.title.clone();
+
+    let result = tokio::task::spawn_blocking(move || -> Result<UpdateDocumentResponse, AppError> {
+        let conn = pool.get().map_err(AppError::Pool)?;
+        let doc_repo = DocumentRepository::new(&conn);
+
+        let _doc = doc_repo
+            .get_by_id(&doc_id_clone)
+            .map_err(AppError::Db)?
+            .ok_or_else(|| AppError::NotFound(format!("document {doc_id_clone}")))?;
+
+        doc_repo
+            .update_title(&doc_id_clone, title.as_deref())
+            .map_err(AppError::Db)?;
+
+        Ok(UpdateDocumentResponse {
+            id: doc_id_clone,
+            title,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+
+    Ok(Json(result))
 }
 
 #[cfg(test)]

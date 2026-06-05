@@ -99,6 +99,15 @@ impl<'a> DocumentRepository<'a> {
         rows.collect()
     }
 
+    /// Updates the title of a document. Returns true if a row was updated.
+    pub fn update_title(&self, id: &str, title: Option<&str>) -> rusqlite::Result<bool> {
+        let rows = self.conn.execute(
+            "UPDATE documents SET title = ?1 WHERE id = ?2",
+            rusqlite::params![title, id],
+        )?;
+        Ok(rows > 0)
+    }
+
     /// Deletes a document by id. Returns true if a row was deleted.
     pub fn delete(&self, id: &str) -> rusqlite::Result<bool> {
         let n = self
