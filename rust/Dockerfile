@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM rust:1.82-slim AS builder
+FROM --platform=$BUILDPLATFORM rust:1.85-slim AS builder
 
 # Accept build target (default: native/host architecture)
 ARG TARGETARCH
