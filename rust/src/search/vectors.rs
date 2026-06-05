@@ -164,14 +164,12 @@ impl VectorStore {
     ///
     /// **Assumes unit-normalized embeddings** (as produced by multilingual-e5).
     /// For unit vectors, L2 distance and cosine distance are equivalent up to a
-    /// monotone transformation, so the approximation used here is exact.
+    /// monotone transformation, so the conversion used here is exact.
     ///
     /// **Note:** The virtual tables use the default L2 distance metric.
     /// `similarity_threshold` (0–1 cosine similarity) is converted to an L2
-    /// distance bound via `dist_threshold = 1.0 - similarity_threshold` as a
-    /// rough approximation; for unit-normalised vectors this gives a reasonable
-    /// cut-off.  Callers that need true cosine behaviour should recreate the
-    /// virtual table with `distance_metric=cosine`.
+    /// distance bound via the formula: `dist_threshold = sqrt(2 * (1 - cosine))`.
+    /// This is the exact conversion for unit-normalized vectors.
     pub fn find_similar_memories(
         &self,
         conn: &Connection,
@@ -179,7 +177,8 @@ impl VectorStore {
         limit: usize,
         similarity_threshold: f32,
     ) -> rusqlite::Result<Vec<VectorHit>> {
-        let dist_threshold = 1.0 - similarity_threshold;
+        // For unit-normalized vectors: L2 = sqrt(2*(1-cosine))
+        let dist_threshold = (2.0_f32 * (1.0 - similarity_threshold)).sqrt();
         self.search_memories(conn, query_vector, limit, dist_threshold)
     }
 }
@@ -302,5 +301,20 @@ mod tests {
         // Verify it's gone
         let results = store.search_chunks(&conn, &v, 5).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn cosine_to_l2_threshold_correct() {
+        // cosine=1.0 (identical) → L2=0.0
+        let t = (2.0_f32 * (1.0 - 1.0_f32)).sqrt();
+        assert!((t - 0.0).abs() < 1e-6);
+
+        // cosine=0.0 (orthogonal) → L2=sqrt(2)≈1.414
+        let t = (2.0_f32 * (1.0 - 0.0_f32)).sqrt();
+        assert!((t - 1.4142135).abs() < 1e-4);
+
+        // cosine=0.60 → L2≈0.894, NOT 0.40
+        let t = (2.0_f32 * (1.0 - 0.6_f32)).sqrt();
+        assert!(t > 0.88 && t < 0.91, "expected ~0.894, got {t}");
     }
 }
