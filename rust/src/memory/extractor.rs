@@ -93,10 +93,12 @@ impl FactExtractor {
             match parse(&response.answer) {
                 Ok(items) => return Ok(items),
                 Err(e) if attempt >= 2 => {
-                    let head: String = response.answer.chars().take(200).collect();
                     tracing::warn!(
-                        "memory extractor: unparseable {what} response after {attempt} attempts ({e}): {head}"
+                        "memory extractor: unparseable {what} response after {attempt} attempts ({e}); answer length {} chars",
+                        response.answer.chars().count()
                     );
+                    let head: String = response.answer.chars().take(200).collect();
+                    tracing::debug!("memory extractor: raw {what} answer head: {head}");
                     return Ok(vec![]);
                 }
                 Err(_) => continue,
