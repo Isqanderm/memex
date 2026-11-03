@@ -1,7 +1,7 @@
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
 # Docker buildx + QEMU handles multi-platform transparently —
 # each platform variant runs natively, no cross-compilation needed.
-FROM rust:slim AS builder
+FROM rust:slim-trixie AS builder
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -39,8 +39,8 @@ COPY rust/templates ./templates
 COPY rust/static    ./static
 
 # Bake ONNX models into the image so the container starts without network.
-# Kept outside ./data, which compose bind-mounts.
-ENV MODEL_CACHE_DIR=/app/data/models
+# Kept outside /app/data, which compose bind-mounts.
+ENV MODEL_CACHE_DIR=/app/models
 RUN LLM_PROVIDER=openai LLM_MODEL=warmup LLM_BASE_URL=http://unused \
     ./memex --download-models
 

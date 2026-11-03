@@ -6,19 +6,10 @@
 #   # Edit .env with your API keys
 #   docker compose -f docker-compose.rust.yml up
 #
-# ONNX models (embedding + reranker, ~1.2 GB) are baked into the image
+# ONNX models (e5-small + jina reranker v2, ~1.2 GB) are baked into the image
+# at /app/models, so the container starts without network access.
 #
-# Resource estimates (Raspberry Pi 4, 4GB RAM):
-#   Idle RAM:        ~80-120 MB (app + SQLite)
-#   Under load:      ~400-800 MB (during embedding inference)
-#   ONNX model size: ~200 MB total (cached to disk)
-#   Binary size:     ~25 MB (stripped)
-#   Docker image:    ~150 MB
-#
-# vs Python version:
-#   Idle RAM:        ~2.5 GB (PyTorch + FastAPI + PostgreSQL)
-#   Cold start:      ~15 seconds
-#   Rust cold start: ~2-3 seconds (model loading)
+# Sizes: image ~1.8 GB. First start loads the models in ~20-30 s.
 
 services:
   memex:
@@ -34,16 +25,17 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     env_file: .env
+    environment:
+      # Baked-in model cache; wins over MODEL_CACHE_DIR in .env.
+      MODEL_CACHE_DIR: /app/models
     volumes:
-      # Persistent data: SQLite DB, tantivy FTS index, uploaded files.
-      # Not ./data wholesale: it would hide the models baked into /app/data/models.
-      - ./data/memex.db:/app/data/memex.db
-      - ./data/tantivy:/app/data/tantivy
-      - ./data/uploads:/app/data/uploads
+      # Persistent data: SQLite DB (+WAL), tantivy FTS index, uploaded files.
+      # Models live in /app/models, outside this mount.
+      - ./data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s  # Models load on first start
+      start_period: 120s  # Models load on start (~20-30 s)
