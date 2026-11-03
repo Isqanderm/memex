@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use rusqlite::{params, Connection, OptionalExtension};
+use tracing::warn;
 
 use crate::db::repositories::memories::{Memory, MemoryRepository};
 use crate::llm::LlmProvider;
@@ -28,7 +29,8 @@ impl ProfileService {
         Self { llm }
     }
 
-    /// Cached profile: rebuilt only when the active-memory fingerprint (or scope) changes.
+    /// Cached profile: rebuilt when the active-memory fingerprint, the scope or the UTC
+    /// date changes (the date keys the static/dynamic split, which uses a 30-day cutoff).
     /// SQLite work is synchronous on `conn`; the LLM is awaited only on a cache miss.
     pub async fn get_or_build(
         &self,
@@ -36,7 +38,8 @@ impl ProfileService {
         scope: Option<&str>,
     ) -> anyhow::Result<UserProfile> {
         let repo = MemoryRepository::new(conn);
-        let fp = format!("{}|{}", scope.unwrap_or("*"), repo.fingerprint()?);
+        let today = chrono::Utc::now().format("%Y-%m-%d");
+        let fp = format!("{}|{}|{today}", scope.unwrap_or("*"), repo.fingerprint()?);
 
         let cached = conn
             .query_row(
@@ -58,12 +61,14 @@ impl ProfileService {
 
         let memories = repo.get_all_active(scope)?;
         let profile = self.build_profile(&memories).await?;
-        conn.execute(
+        if let Err(e) = conn.execute(
             "INSERT OR REPLACE INTO profile_cache
                  (id, fingerprint, static_summary, dynamic_summary, raw_count, built_at)
              VALUES (1, ?1, ?2, ?3, ?4, datetime('now'))",
             params![fp, profile.static_summary, profile.dynamic_summary, profile.raw_count as i64],
-        )?;
+        ) {
+            warn!("Profile cache write failed, returning the uncached profile: {e}");
+        }
         Ok(profile)
     }
 
@@ -159,6 +164,28 @@ mod tests {
         assert_eq!(llm.calls.load(Ordering::SeqCst), calls);
         assert_eq!(first.dynamic_summary, second.dynamic_summary);
         assert_eq!(second.raw_count, 1);
+
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let fp: String = conn
+            .query_row("SELECT fingerprint FROM profile_cache WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert!(fp.ends_with(&format!("|{today}")), "fingerprint carries the date: {fp}");
+    }
+
+    #[tokio::test]
+    async fn cache_write_failure_still_returns_profile() {
+        let pool = build_pool(":memory:").unwrap();
+        let conn = pool.get().unwrap();
+        MemoryRepository::new(&conn).create(&nm("User likes Rust")).unwrap();
+        let svc = ProfileService::new(Arc::new(ScriptedLlm::new(vec!["summary"])));
+        // Reads work, every cache write fails.
+        conn.execute_batch(
+            "CREATE TRIGGER no_write BEFORE INSERT ON profile_cache
+                 BEGIN SELECT RAISE(ABORT, 'read-only'); END;",
+        )
+        .unwrap();
+        let p = svc.get_or_build(&conn, None).await.unwrap();
+        assert_eq!(p.raw_count, 1);
     }
 
     #[tokio::test]

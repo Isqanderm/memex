@@ -10,6 +10,10 @@ use crate::search::vectors::VectorStore;
 /// RRF smoothing constant for memory retrieval.
 const RRF_K: usize = 60;
 
+/// Minimum candidates per side when a scope or category filter is applied after
+/// retrieval, so a filtered-out majority does not crowd the matching facts out.
+const FILTERED_MIN_CANDIDATES: usize = 200;
+
 /// A single memory retrieval hit.
 #[derive(Debug, Clone)]
 pub struct MemoryHit {
@@ -47,6 +51,9 @@ impl MemorySearch {
     ///
     /// 1. Vector hits above `retrieval_similarity` (cosine).
     /// 2. BM25 hits from the memory FTS index.
+    ///    Each side fetches `top_k * 2` candidates, or at least
+    ///    `FILTERED_MIN_CANDIDATES` when `scope` or `category` is given (the filter runs
+    ///    after retrieval, on the global candidate list).
     /// 3. RRF merge (`chunk_id` = memory id).
     /// 4. Load each memory, keep active ones matching `scope` and `category`.
     /// 5. Rerank up to `top_k * 3` candidates with the cross-encoder (when given and
@@ -67,7 +74,11 @@ impl MemorySearch {
         if self.top_k == 0 {
             return Ok(vec![]);
         }
-        let candidates = self.top_k.saturating_mul(2);
+        let candidates = if scope.is_some() || category.is_some() {
+            self.top_k.saturating_mul(2).max(FILTERED_MIN_CANDIDATES)
+        } else {
+            self.top_k.saturating_mul(2)
+        };
         let rerank_pool = self.top_k.saturating_mul(3);
 
         let vec_hits: Vec<SearchHit> = vectors
@@ -241,6 +252,24 @@ mod tests {
             .search(&conn, &VectorStore::new(384), &f.fts, None, "MEMEX_URL", &query, "en", None, None)
             .unwrap();
         assert!(hits.is_empty());
+        assert!(f.fts.search("MEMEX_URL", "en", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn scoped_search_oversamples_past_other_scopes() {
+        let f = setup();
+        let conn = f.pool.get().unwrap();
+        for i in 0..50 {
+            add_fact(&conn, &f.fts, &format!("widget fact number {i} widget"), "default");
+        }
+        let work = add_fact(&conn, &f.fts, "The work widget is the blue one", "work");
+
+        // top_k = 10: without oversampling only 20 BM25 candidates would be fetched.
+        let hits = MemorySearch::new(0.60, 10)
+            .search(&conn, &VectorStore::new(384), &f.fts, None, "widget", &[0.0; 384], "en", Some("work"), None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].memory_id, work);
     }
 
     #[test]
