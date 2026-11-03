@@ -6,7 +6,7 @@
 #   # Edit .env with your API keys
 #   docker compose -f docker-compose.rust.yml up
 #
-# First run: downloads ONNX embedding (~90MB) and reranker (~100MB) models
+# ONNX models (embedding + reranker, ~1.2 GB) are baked into the image
 #
 # Resource estimates (Raspberry Pi 4, 4GB RAM):
 #   Idle RAM:        ~80-120 MB (app + SQLite)
@@ -32,13 +32,14 @@ services:
     # OR use pre-built image:
     # image: ghcr.io/your-org/memex-rust:latest
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file: .env
     volumes:
-      # Persistent data: SQLite DB, tantivy FTS index, uploaded files
-      - ./data:/app/data
-      # ONNX model cache (reused between restarts, ~200MB)
-      - fastembed_models:/root/.cache/huggingface
+      # Persistent data: SQLite DB, tantivy FTS index, uploaded files.
+      # Not ./data wholesale: it would hide the models baked into /app/data/models.
+      - ./data/memex.db:/app/data/memex.db
+      - ./data/tantivy:/app/data/tantivy
+      - ./data/uploads:/app/data/uploads
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -46,6 +47,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s  # Models load on first start
-
-volumes:
-  fastembed_models:

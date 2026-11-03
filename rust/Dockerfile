@@ -6,6 +6,7 @@ FROM rust:slim AS builder
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,12 +23,13 @@ RUN touch src/main.rs
 RUN cargo build --release
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y \
     poppler-utils \
     ca-certificates \
     curl \
+    libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -35,6 +37,12 @@ WORKDIR /app
 COPY --from=builder /app/target/release/memex ./memex
 COPY rust/templates ./templates
 COPY rust/static    ./static
+
+# Bake ONNX models into the image so the container starts without network.
+# Kept outside ./data, which compose bind-mounts.
+ENV MODEL_CACHE_DIR=/app/data/models
+RUN LLM_PROVIDER=openai LLM_MODEL=warmup LLM_BASE_URL=http://unused \
+    ./memex --download-models
 
 RUN mkdir -p data/uploads data/tantivy
 

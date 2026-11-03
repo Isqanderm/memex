@@ -486,11 +486,17 @@ async fn main() -> anyhow::Result<()> {
         "Loading embedding model {}...",
         config.local_embedding_model
     );
-    let embed = Arc::new(EmbeddingClient::new(&config.local_embedding_model)?);
+    let embed = Arc::new(EmbeddingClient::new(
+        &config.local_embedding_model,
+        std::path::Path::new(&config.model_cache_dir),
+    )?);
     info!("Embedding model loaded ({} dims)", embed.dimensions());
 
-    info!("Loading reranker model...");
-    let reranker = Arc::new(Reranker::new()?);
+    info!("Loading reranker model {}...", config.reranker_model);
+    let reranker = Arc::new(Reranker::new(
+        &config.reranker_model,
+        std::path::Path::new(&config.model_cache_dir),
+    )?);
     info!("Reranker loaded");
 
     let llm = create_llm_provider(&config)?;

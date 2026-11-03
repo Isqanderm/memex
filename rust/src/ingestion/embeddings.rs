@@ -4,6 +4,7 @@
 //! - Documents/passages: "passage: <text>"
 //! - Queries: "query: <text>"
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -26,17 +27,24 @@ impl EmbeddingClient {
     /// Construct a new client for the given model name.
     ///
     /// Supported values: `"multilingual-e5-small"` (the default).
-    /// The ONNX model is downloaded on first use and cached in `~/.cache/`.
-    pub fn new(model_name: &str) -> anyhow::Result<Self> {
+    /// The ONNX model is served from `cache_dir`, downloaded there on first use.
+    pub fn new(model_name: &str, cache_dir: &Path) -> anyhow::Result<Self> {
         let embedding_model = model_name_to_enum(model_name)
             .with_context(|| format!("Unsupported embedding model: {model_name}"))?;
 
         let dimensions = model_dimensions(&embedding_model);
 
         let model = TextEmbedding::try_new(
-            TextInitOptions::new(embedding_model).with_show_download_progress(false),
+            TextInitOptions::new(embedding_model)
+                .with_cache_dir(cache_dir.to_path_buf())
+                .with_show_download_progress(false),
         )
-        .with_context(|| format!("Failed to load embedding model: {model_name}"))?;
+        .with_context(|| {
+            format!(
+                "Failed to load embedding model: {model_name} (cache dir: {})",
+                cache_dir.display()
+            )
+        })?;
 
         Ok(Self {
             model: Arc::new(Mutex::new(model)),
@@ -108,9 +116,9 @@ pub fn add_query_prefix(text: &str) -> String {
 
 fn model_name_to_enum(name: &str) -> Option<EmbeddingModel> {
     match name {
-        "multilingual-e5-small" => Some(EmbeddingModel::MultilingualE5Small),
-        "multilingual-e5-base" => Some(EmbeddingModel::MultilingualE5Base),
-        "multilingual-e5-large" => Some(EmbeddingModel::MultilingualE5Large),
+        "multilingual-e5-small" | "intfloat/multilingual-e5-small" => Some(EmbeddingModel::MultilingualE5Small),
+        "multilingual-e5-base" | "intfloat/multilingual-e5-base" => Some(EmbeddingModel::MultilingualE5Base),
+        "multilingual-e5-large" | "intfloat/multilingual-e5-large" => Some(EmbeddingModel::MultilingualE5Large),
         _ => None,
     }
 }
@@ -154,8 +162,24 @@ mod tests {
     }
 
     #[test]
+    fn model_name_accepts_hf_id() {
+        assert!(matches!(
+            model_name_to_enum("intfloat/multilingual-e5-small"),
+            Some(EmbeddingModel::MultilingualE5Small)
+        ));
+    }
+
+    #[test]
     fn multilingual_e5_small_dimensions() {
         assert_eq!(model_dimensions(&EmbeddingModel::MultilingualE5Small), 384);
+    }
+
+    fn default_cache_dir() -> std::path::PathBuf {
+        match std::env::var("MODEL_CACHE_DIR") {
+            Ok(dir) => dir.into(),
+            Err(_) => std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".cache/fastembed"),
+        }
     }
 
     // ------------------------------------------------------------------ //
@@ -167,7 +191,7 @@ mod tests {
     #[test]
     #[ignore]
     fn embed_passages_returns_384_dims() {
-        let client = EmbeddingClient::new(DEFAULT_MODEL).expect("Failed to create client");
+        let client = EmbeddingClient::new(DEFAULT_MODEL, &default_cache_dir()).expect("Failed to create client");
         assert_eq!(client.dimensions(), 384);
 
         let texts = vec!["This is a test passage.", "Another passage for testing."];
@@ -183,7 +207,7 @@ mod tests {
     #[test]
     #[ignore]
     fn embed_query_returns_normalized_vector() {
-        let client = EmbeddingClient::new(DEFAULT_MODEL).expect("Failed to create client");
+        let client = EmbeddingClient::new(DEFAULT_MODEL, &default_cache_dir()).expect("Failed to create client");
         let vec = client
             .embed_query("What is the capital of France?")
             .expect("embed_query failed");

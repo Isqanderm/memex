@@ -80,7 +80,7 @@ impl Config {
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
             openai_llm_api_key: std::env::var("OPENAI_LLM_API_KEY").ok(),
             llm_base_url: std::env::var("LLM_BASE_URL").ok().filter(|s| !s.is_empty()),
-            reranker_model: get_or("RERANKER_MODEL", "bge-reranker-v2-m3"),
+            reranker_model: get_or("RERANKER_MODEL", "jina-reranker-v2-base-multilingual"),
             model_cache_dir: get_or("MODEL_CACHE_DIR", "data/models"),
             mcp_allowed_hosts: Self::parse_allowed_hosts(&get_or(
                 "MCP_ALLOWED_HOSTS",
@@ -138,7 +138,7 @@ impl Config {
             anthropic_api_key: Some("sk-test".to_string()),
             openai_llm_api_key: None,
             llm_base_url: None,
-            reranker_model: "bge-reranker-v2-m3".to_string(),
+            reranker_model: "jina-reranker-v2-base-multilingual".to_string(),
             model_cache_dir: "data/models".to_string(),
             mcp_allowed_hosts: Self::parse_allowed_hosts("localhost,127.0.0.1,::1,memex"),
             l2_chunk_size: 512,
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn default_test_config_has_mcp_defaults() {
         let cfg = Config::default_for_test();
-        assert_eq!(cfg.reranker_model, "bge-reranker-v2-m3");
+        assert_eq!(cfg.reranker_model, "jina-reranker-v2-base-multilingual");
         assert_eq!(cfg.model_cache_dir, "data/models");
         assert!(cfg.mcp_allowed_hosts.contains(&"memex".to_string()));
     }
