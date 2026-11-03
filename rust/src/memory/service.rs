@@ -4,6 +4,7 @@ use rusqlite::Connection;
 use tracing::{info, warn};
 
 use crate::db::repositories::memories::{MemoryRepository, NewMemory};
+use crate::db::repositories::memory_jobs::MemoryJobRepository;
 use crate::db::repositories::memory_sources::MemorySourceRepository;
 use crate::ingestion::embeddings::EmbeddingClient;
 use crate::ingestion::language::LanguageDetector;
@@ -102,6 +103,62 @@ impl MemorySvc {
             _ => "explicit",
         };
         let (source_id, _) = MemorySourceRepository::new(conn).get_or_create(kind, text)?;
+        self.remember_with_source(conn, text, source, scope, &source_id)
+            .await
+    }
+
+    /// Run extraction over an already stored source (used by the extraction worker).
+    ///
+    /// Conversation sources hold the raw conversation; the observe prompt is applied here.
+    pub async fn remember_from_source(
+        &self,
+        conn: &Connection,
+        source_id: &str,
+        source: &str,
+        scope: &str,
+    ) -> anyhow::Result<RememberResult> {
+        let stored = MemorySourceRepository::new(conn)
+            .get_by_id(source_id)?
+            .ok_or_else(|| anyhow::anyhow!("memory source {source_id} not found"))?;
+        let text = if source == "conversation" {
+            OBSERVE_PROMPT.replace("{conversation}", &stored.text)
+        } else {
+            stored.text
+        };
+        self.remember_with_source(conn, &text, source, scope, source_id)
+            .await
+    }
+
+    /// Queue fact extraction for a conversation; returns `(job_id, created)`.
+    ///
+    /// The raw conversation is stored as a `memory_sources` row (deduplicated by checksum).
+    /// When that source already has a job that did not fail, its id is returned with
+    /// `created = false`; a failed job is retried with a new job.
+    pub fn enqueue_observe(
+        &self,
+        conn: &Connection,
+        conversation: &str,
+        scope: &str,
+    ) -> anyhow::Result<(String, bool)> {
+        let (source_id, _) =
+            MemorySourceRepository::new(conn).get_or_create("conversation", conversation)?;
+        let jobs = MemoryJobRepository::new(conn);
+        if let Some(job) = jobs.get_latest_by_source_ref(&source_id)? {
+            if job.status != "error" {
+                return Ok((job.id, false));
+            }
+        }
+        Ok((jobs.create(&source_id, "conversation", scope)?, true))
+    }
+
+    async fn remember_with_source(
+        &self,
+        conn: &Connection,
+        text: &str,
+        source: &str,
+        scope: &str,
+        source_id: &str,
+    ) -> anyhow::Result<RememberResult> {
         let facts = self.extractor.extract_facts(text).await?;
         let facts_extracted = facts.len();
         let mut memories_updated = 0;
@@ -185,7 +242,7 @@ impl MemorySvc {
             let memory_id = repo.create(&NewMemory {
                 content: &fact.content,
                 source,
-                source_id: Some(&source_id),
+                source_id: Some(source_id),
                 scope,
                 forget_after: forget_after_str.as_deref(),
                 relation: relation.as_deref(),
@@ -211,16 +268,6 @@ impl MemorySvc {
             facts_extracted,
             memories_updated,
         })
-    }
-
-    pub async fn observe(
-        &self,
-        conn: &Connection,
-        conversation: &str,
-        scope: &str,
-    ) -> anyhow::Result<RememberResult> {
-        let prompt = OBSERVE_PROMPT.replace("{conversation}", conversation);
-        self.remember(conn, &prompt, "conversation", scope).await
     }
 
     pub async fn forget(

@@ -17,7 +17,7 @@ def _assert_delete_memory_ok(resp: httpx.Response) -> None:
 @pytest.mark.golden
 @pytest.mark.unit
 class TestMemoryContract:
-    """API contract tests for /api/memory/* — requires LLM only for remember/observe."""
+    """API contract tests for /api/memory/* — requires LLM only for remember (observe is queued)."""
 
     def test_memory_list_returns_array(self, client: httpx.Client) -> None:
         resp = client.get("/api/memory/list")
@@ -110,3 +110,18 @@ class TestMemoryContract:
     def test_delete_nonexistent_memory_returns_404(self, client: httpx.Client) -> None:
         resp = client.delete("/api/memory/nonexistent-id-00000000")
         assert resp.status_code in (400, 404, 422)
+
+    def test_observe_is_async(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/observe", json={"conversation": "User: I moved to Novi Sad."})
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["status"] == "pending" and data["job_id"]
+        job = client.get(f"/api/memory/jobs/{data['job_id']}")
+        assert job.status_code == 200
+        assert job.json()["status"] in ("pending", "processing", "done", "error")
+
+    def test_observe_same_text_twice_returns_same_job(self, client: httpx.Client) -> None:
+        body = {"conversation": "User: I prefer tabs over spaces."}
+        a = client.post("/api/memory/observe", json=body).json()["job_id"]
+        b = client.post("/api/memory/observe", json=body).json()["job_id"]
+        assert a == b

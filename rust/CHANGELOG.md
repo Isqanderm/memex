@@ -7,6 +7,24 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ---
 
+## [3.0.0-rc.6] — 2026-11-03
+
+### Upgrading from rc.5
+
+- The database schema moves to v2. The first start migrates rc.4/rc.5 databases automatically; back up `data/memex.db` before upgrading.
+- `POST /api/memory/observe` and the MCP `observe` tool no longer return extracted facts; see Changed.
+
+### Added
+
+- MCP tool `check_memory_job` and `GET /api/memory/jobs/{job_id}` (`{job_id, status, facts_extracted, error}`)
+
+### Changed
+
+- `observe` is asynchronous: the conversation is stored and queued in `memory_extraction_jobs`, a background worker extracts the facts. `POST /api/memory/observe` returns `202 Accepted` with `{"job_id", "status": "pending"}`; the MCP tool returns `Queued. job_id: <id>. Check with check_memory_job.` The same conversation sent twice maps to the same job. `remember` stays synchronous.
+- `recall` searches memory facts without calling the LLM
+
+---
+
 ## [3.0.0-rc.5] — 2026-11-03
 
 ### Upgrading from rc.4

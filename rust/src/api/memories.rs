@@ -6,6 +6,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::db::repositories::memories::{Memory, MemoryRepository};
+use crate::db::repositories::memory_jobs::MemoryJobRepository;
 use crate::error::AppError;
 use crate::search::memory_search::{MemoryHit, MemorySearch};
 
@@ -131,6 +132,21 @@ pub struct RememberResponse {
     pub memories_updated: usize,
 }
 
+/// Body of the `202 Accepted` answer to `POST /api/memory/observe`.
+#[derive(Serialize)]
+pub struct ObserveResponse {
+    pub job_id: String,
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct MemoryJobResponse {
+    pub job_id: String,
+    pub status: String,
+    pub facts_extracted: i64,
+    pub error: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct MemoryItem {
     pub id: String,
@@ -157,6 +173,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/memory/remember", post(remember_handler))
         .route("/api/memory/observe", post(observe_handler))
+        .route("/api/memory/jobs/:id", get(memory_job_handler))
         .route("/api/memory/search", post(search_handler))
         .route("/api/memory/list", get(list_memories_handler))
         .route("/api/memory/context", get(context_handler))
@@ -191,24 +208,45 @@ async fn remember_handler(
 async fn observe_handler(
     State(state): State<AppState>,
     Json(body): Json<ObserveRequest>,
-) -> Result<Json<RememberResponse>, AppError> {
-    let pool = state.pool.clone();
-    let memory_svc = state.memory_svc.clone();
-    let conversation = body.conversation.clone();
-    let scope = body.scope.clone();
-
-    let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get().map_err(AppError::Pool)?;
-        tokio::runtime::Handle::current()
-            .block_on(async move { memory_svc.observe(&conn, &conversation, &scope).await })
+) -> Result<(StatusCode, Json<ObserveResponse>), AppError> {
+    let job_id = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        state
+            .memory_svc
+            .enqueue_observe(&conn, &body.conversation, &body.scope)
+            .map(|(id, _created)| id)
             .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
 
-    Ok(Json(RememberResponse {
-        facts_extracted: result.facts_extracted,
-        memories_updated: result.memories_updated,
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(ObserveResponse {
+            job_id,
+            status: "pending".to_string(),
+        }),
+    ))
+}
+
+async fn memory_job_handler(
+    State(state): State<AppState>,
+    Path(job_id): Path<String>,
+) -> Result<Json<MemoryJobResponse>, AppError> {
+    let id = job_id.clone();
+    let job = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        MemoryJobRepository::new(&conn).get_by_id(&id).map_err(AppError::Db)
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??
+    .ok_or_else(|| AppError::NotFound(format!("memory job {job_id}")))?;
+
+    Ok(Json(MemoryJobResponse {
+        job_id: job.id,
+        status: job.status,
+        facts_extracted: job.facts_extracted,
+        error: job.error,
     }))
 }
 

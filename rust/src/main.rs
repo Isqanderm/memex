@@ -29,6 +29,7 @@ use llm::create_llm_provider;
 use memory::extractor::FactExtractor;
 use memory::profile::ProfileService;
 use memory::service::MemorySvc;
+use memory::extraction_worker::MemoryExtractionWorker;
 use memory::worker::MemoryExpiryWorker;
 use search::context::ContextBuilder;
 use search::memory_search::MemorySearch;
@@ -140,14 +141,21 @@ async fn main() -> anyhow::Result<()> {
         svc: memory_svc.clone(),
         interval_secs: 3600,
     });
+    let extraction_worker = Arc::new(MemoryExtractionWorker {
+        pool: pool.clone(),
+        svc: memory_svc.clone(),
+    });
 
     let w1 = ingestion_worker.clone();
     let w2 = expiry_worker.clone();
     let rx1 = shutdown_rx.clone();
     let rx2 = shutdown_rx.clone();
+    let w3 = extraction_worker.clone();
+    let rx3 = shutdown_rx.clone();
 
     tokio::spawn(async move { w1.run(rx1).await });
     tokio::spawn(async move { w2.run(rx2).await });
+    tokio::spawn(async move { w3.run(rx3).await });
 
     let state = AppState {
         pool,

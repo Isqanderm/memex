@@ -21,6 +21,7 @@ use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
 use crate::db::repositories::memories::MemoryRepository;
+use crate::db::repositories::memory_jobs::MemoryJobRepository;
 use crate::error::AppError;
 
 // ── Tool parameter types ──────────────────────────────────────────────────────
@@ -56,6 +57,13 @@ pub struct ObserveParams {
     pub conversation: String,
     /// Memory scope (default: "default").
     pub scope: Option<String>,
+}
+
+/// Parameters for the `check_memory_job` tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct CheckMemoryJobParams {
+    /// Job ID returned by `observe`.
+    pub job_id: String,
 }
 
 /// Parameters for the `memories` tool.
@@ -266,25 +274,48 @@ impl MemexMcp {
         ok_text(lines.join("\n"))
     }
 
-    #[tool(description = "Extract facts from a conversation and save to memory. Call as the LAST tool at the end of every session, passing the full conversation.")]
+    #[tool(description = "Queue fact extraction from a conversation; returns a job_id at once (check it with check_memory_job). Call as the LAST tool at the end of every session, passing the full conversation.")]
     pub async fn observe(
         &self,
         Parameters(p): Parameters<ObserveParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let memory_svc = self.state.memory_svc.clone();
         let scope = p.scope.unwrap_or_else(|| "default".to_string());
-        let r = self
+        let (job_id, _created) = self
             .with_conn(move |conn| {
-                tokio::runtime::Handle::current()
-                    .block_on(memory_svc.observe(conn, &p.conversation, &scope))
+                memory_svc
+                    .enqueue_observe(conn, &p.conversation, &scope)
                     .map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
             .map_err(internal)?;
-        ok_text(format!(
-            "Session observed. Facts extracted: {}, memories updated: {}",
-            r.facts_extracted, r.memories_updated
-        ))
+        ok_text(format!("Queued. job_id: {job_id}. Check with check_memory_job."))
+    }
+
+    #[tool(description = "Check a fact-extraction job queued by observe. Returns pending/processing/done (with the number of facts)/error.")]
+    pub async fn check_memory_job(
+        &self,
+        Parameters(p): Parameters<CheckMemoryJobParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let id = p.job_id.clone();
+        let job = self
+            .with_conn(move |conn| {
+                MemoryJobRepository::new(conn).get_by_id(&id).map_err(AppError::Db)
+            })
+            .await
+            .map_err(internal)?;
+
+        match job {
+            None => domain_error(format!("Memory job not found: {}", p.job_id)),
+            Some(job) => match job.status.as_str() {
+                "done" => ok_text(format!("Done. Facts extracted: {}", job.facts_extracted)),
+                "error" => ok_text(format!(
+                    "Error: {}",
+                    job.error.as_deref().unwrap_or("unknown error")
+                )),
+                status => ok_text(format!("{status} — not ready yet, check again later.")),
+            },
+        }
     }
 
     #[tool(description = "List all active memories with their content, source, and timestamps.")]

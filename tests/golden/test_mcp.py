@@ -10,6 +10,7 @@ from mcp.client.streamable_http import streamable_http_client
 EXPECTED_TOOLS = {
     "remember", "recall", "forget", "context", "observe", "memories",
     "index_text", "check_indexing", "list_documents", "delete_document",
+    "check_memory_job",
 }
 
 
