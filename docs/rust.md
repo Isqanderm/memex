@@ -256,7 +256,7 @@ export MODEL_CACHE_DIR=$HOME/.cache/fastembed LLM_BASE_URL=http://127.0.0.1:1143
 uv run python tests/research/memory_eval.py --base-url http://localhost:8000 --scope eval --model-label qwen2.5-7b
 ```
 
-It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3`, `hit@k (of matched)` (only queries whose expected fact was extracted), `search precision@3` and `updates detected x/y`, and records its configuration (including `--conflict-sim`/`--retrieval-sim` labels). Unmatched expected facts count as misses in the unconditional `hit@k`. `--self-test` checks the scoring helpers, and writes `tests/research/results/<date>T<HHMMSS>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
+It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3`, `hit@k (of matched)` (only queries whose expected fact was extracted), `search precision@3` and `updates detected x/y`, and records its configuration (including `--conflict-sim`/`--retrieval-sim` labels). Unmatched expected facts count as misses in the unconditional `hit@k`. `--self-test` checks the scoring helpers and exits. A run writes its results JSON before cleanup, so a failed cleanup or an aborted run still leaves the measurements (with `error` and `aborted` set). `--search-only` skips `remember` and cleanup and reports no facts precision/recall. Results go to `tests/research/results/<date>T<HHMMSS>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
 
 Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`, measured with reranking (d5bd55a) and exact-token scoring (25be1a8)):
 
@@ -270,6 +270,8 @@ Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`
 | search hit@3 (of matched) | 0.68 |
 | search precision@3 | 0.44 |
 | updates detected | 3/4 |
+
+Comparability: unconditional numbers between runs with different extraction outputs are not like-for-like (different facts get extracted, so different queries have something to find). To compare search configurations (thresholds, ranking changes, models) seed once with `--keep`, then run `--search-only --seed-results <seed results json>` per server configuration; this reuses the memory ids matched in the seed run. Without `--seed-results`, `--search-only` re-matches against the whole scope and is only comparable with other such runs.
 
 Before reranking and with the older scoring (which split exact tokens on punctuation) the same set gave precision 0.67, recall 0.84, hit@1 0.50, hit@3 0.53; those numbers are not comparable with the table above. Extraction numbers vary between runs of a 7B model (a second run earlier gave 0.64 / 0.78 / updates 3/4). A `--search-only` re-run on the same seeded scope gives hit@1 0.27, hit@3 0.40 (of matched 0.36 / 0.55) and is repeatable, but it matches expected facts against the whole scope instead of the facts the row just extracted, so compare `--search-only` runs only with each other (as in the sweep below). gpt-4o-mini was not run (no OpenAI key available).
 

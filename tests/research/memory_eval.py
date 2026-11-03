@@ -11,7 +11,11 @@ Usage:
     uv run python tests/research/memory_eval.py --search-only   # threshold sweeps without the LLM
 
 Prints facts precision / recall, search hit@1 / hit@3 and updates detected.
-Always exits 0 (research tool). Results go to results/<date>-<model-label>.json.
+Always exits 0 (research tool). Results go to results/<date>T<HHMMSS>-<model-label>.json.
+
+Comparable search A/B: one --keep run (seed), then per server configuration
+    --search-only --seed-results <seed results json>
+which reuses the memory ids matched in the seed run instead of re-matching against the whole scope.
 """
 import argparse
 import json
@@ -57,13 +61,14 @@ def token_f1(a: str, b: str) -> float:
     return 2 * p * r / (p + r)
 
 
-def match_facts(expected: list[str], extracted: list[dict], exact_tokens: list | None = None) -> dict[int, dict]:
+def match_facts(expected: list[str], extracted: list[dict], exact_tokens: list[list] | None = None) -> dict[int, dict]:
     """Greedy one-to-one matching: expected index -> extracted memory, F1 >= threshold.
 
-    Rows with exact_tokens additionally require them verbatim in the extracted fact."""
+    exact_tokens is aligned with expected: exact_tokens[i] (may be empty) must appear verbatim
+    in the fact matched to expected[i]."""
     pairs = sorted(
         ((token_f1(e, m["content"]), i, j) for i, e in enumerate(expected) for j, m in enumerate(extracted)
-         if not exact_tokens or has_exact_tokens(m["content"], exact_tokens)),
+         if not exact_tokens or has_exact_tokens(m["content"], exact_tokens[i])),
         reverse=True,
     )
     matched: dict[int, dict] = {}
@@ -90,9 +95,18 @@ def remember(client: httpx.Client, text: str, scope: str) -> dict:
     return r.json()
 
 
-def run_row(client: httpx.Client, row: dict, scope: str, search_only: bool = False) -> dict:
+def run_row(client: httpx.Client, row: dict, scope: str, search_only: bool = False,
+            seed_ids: dict[str, dict[str, str]] | None = None) -> dict:
     if search_only:
-        # facts already in the scope (seeded by a previous --keep run): match against all of them
+        # facts already in the scope (seeded by a previous --keep run)
+        if seed_ids is not None:
+            ids = seed_ids.get(row["id"], {})
+            return {
+                "id": row["id"], "extracted": [], "n_extracted": 0, "n_matched_extracted": 0,
+                "n_expected": len(row["expected_facts"]), "n_matched_expected": len(ids),
+                "first_facts_extracted": None, "expected_updates": None, "updates": None,
+                "matched_ids": ids,
+            }
         matched = match_facts(row["expected_facts"], list_scope(client, scope), row.get("exact_tokens"))
         return {
             "id": row["id"], "extracted": [], "n_extracted": 0, "n_matched_extracted": 0,
@@ -164,11 +178,14 @@ def summarize(results: list[dict], queries: list[dict]) -> dict:
     }
 
 
-def print_report(s: dict) -> None:
+def print_report(s: dict, search_only: bool = False) -> None:
     print(f"{'metric':<22}{'value':>10}")
     print("-" * 32)
-    print(f"{'facts precision':<22}{s['facts_precision']:>10.2f}")
-    print(f"{'facts recall':<22}{s['facts_recall']:>10.2f}")
+    if search_only:
+        print("facts precision/recall: n/a (search-only)")
+    else:
+        print(f"{'facts precision':<22}{s['facts_precision']:>10.2f}")
+        print(f"{'facts recall':<22}{s['facts_recall']:>10.2f}")
     print(f"{'search hit@1':<22}{s['hit_at_1']:>10.2f}")
     print(f"{'search hit@3':<22}{s['hit_at_3']:>10.2f}")
     print(f"{'hit@1 (of matched)':<22}{s['hit_at_1_matched']:>10.2f}")
@@ -195,8 +212,13 @@ def self_test() -> None:
     exp = ["User's project uses fastembed version 5.2.1"]
     bad = [{"content": "User's project uses fastembed version 5.2.0"}]
     good = [{"content": "User's project uses fastembed version 5.2.1"}]
-    assert match_facts(exp, bad, ["5.2.1"]) == {}
-    assert 0 in match_facts(exp, good, ["5.2.1"])
+    assert match_facts(exp, bad, [["5.2.1"]]) == {}
+    assert 0 in match_facts(exp, good, [["5.2.1"]])
+    # en-11 shape: two expected facts, each with its own exact tokens, both extracted correctly
+    exp2 = ["User's project uses fastembed version 5.2.1", "User's project uses tantivy 0.22"]
+    got2 = [{"content": "User's project uses tantivy 0.22"}, {"content": "User's project uses fastembed version 5.2.1"}]
+    assert sorted(match_facts(exp2, got2, [["5.2.1"], ["0.22"]])) == [0, 1]
+    assert match_facts(exp2, [{"content": "User's project uses tantivy 0.21"}], [["5.2.1"], ["0.22"]]) == {}
     print("self-test ok")
 
 
@@ -208,6 +230,7 @@ def main() -> None:
     ap.add_argument("--dataset", default=str(DATASET))
     ap.add_argument("--search-only", action="store_true",
                     help="skip remember and cleanup; use facts already in the scope (seed with a previous --keep run)")
+    ap.add_argument("--seed-results", help="with --search-only: results JSON of the --keep run whose matched_ids to reuse")
     ap.add_argument("--keep", action="store_true", help="do not delete the scope's facts at the end")
     ap.add_argument("--conflict-sim", help="label only: MEMORY_CONFLICT_SIMILARITY the server runs with")
     ap.add_argument("--retrieval-sim", help="label only: MEMORY_RETRIEVAL_SIMILARITY the server runs with")
@@ -218,13 +241,17 @@ def main() -> None:
         self_test()
         return
 
+    seed_ids = None
+    if args.seed_results:
+        seed_ids = {r["id"]: r["matched_ids"] for r in json.loads(Path(args.seed_results).read_text())["rows"]}
+
     rows = [json.loads(line) for line in Path(args.dataset).read_text().splitlines() if line.strip()]
     results, queries = [], []
     error = None
     with httpx.Client(base_url=args.base_url, timeout=300) as client:
         try:
             for row in rows:
-                res = run_row(client, row, args.scope, args.search_only)
+                res = run_row(client, row, args.scope, args.search_only, seed_ids)
                 results.append(res)
                 queries.extend(run_queries(client, row, res, args.scope))
                 print(f"{row['id']}: extracted {res['n_extracted']}, matched {res['n_matched_expected']}/{res['n_expected']}", flush=True)
@@ -234,7 +261,7 @@ def main() -> None:
 
         summary = summarize(results, queries)
         print()
-        print_report(summary)
+        print_report(summary, args.search_only)
         RESULTS_DIR.mkdir(exist_ok=True)
         label = re.sub(r"[^\w.-]", "-", args.model_label + ("-search-only" if args.search_only else ""))
         out = RESULTS_DIR / f"{datetime.now().strftime('%Y-%m-%dT%H%M%S')}-{label}.json"
@@ -242,6 +269,7 @@ def main() -> None:
             "config": {
                 "base_url": args.base_url, "scope": args.scope, "model_label": args.model_label,
                 "f1_threshold": F1_THRESHOLD, "top_k": TOP_K, "search_only": args.search_only,
+                "seed_results": args.seed_results,
                 "conflict_sim": args.conflict_sim, "retrieval_sim": args.retrieval_sim,
             },
             "summary": summary, "rows": results, "queries": queries,
