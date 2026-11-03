@@ -21,6 +21,31 @@ Conversation:
 
 Summarize the key new facts about the user from this conversation."#;
 
+/// Version of what the memory FTS indexes per fact; bump to force a rebuild at startup.
+/// 2: facts are indexed without the leading "User " template prefix.
+pub const MEMORY_INDEX_VERSION: &str = "2";
+/// Marker file in the memory index directory holding [`MEMORY_INDEX_VERSION`].
+pub const INDEX_VERSION_FILE: &str = "INDEX_VERSION";
+
+/// Index every active fact (buffered, one commit). A fact that fails to index is
+/// logged and skipped. Returns the number of facts indexed.
+fn index_all_active(conn: &Connection, fts: &TantivyStore) -> anyhow::Result<usize> {
+    let facts = MemoryRepository::new(conn).get_all_active(None)?;
+    if facts.is_empty() {
+        return Ok(0);
+    }
+    let mut n = 0;
+    for m in &facts {
+        let lang = LanguageDetector.detect(&m.content);
+        match fts.add_chunk(&m.id, "memory", &lang, fts_text(&m.content)) {
+            Ok(()) => n += 1,
+            Err(e) => warn!("Failed to index memory {} for full-text search: {e}", m.id),
+        }
+    }
+    fts.commit()?;
+    Ok(n)
+}
+
 /// Index every active fact into an empty memory FTS index; commits once.
 ///
 /// Returns the number of facts indexed (0 when the index already has documents).
@@ -28,16 +53,33 @@ pub fn backfill_memory_fts(conn: &Connection, fts: &TantivyStore) -> anyhow::Res
     if fts.num_docs() > 0 {
         return Ok(0);
     }
-    let facts = MemoryRepository::new(conn).get_all_active(None)?;
-    if facts.is_empty() {
-        return Ok(0);
+    index_all_active(conn, fts)
+}
+
+/// Bring the memory FTS index in line with [`MEMORY_INDEX_VERSION`].
+///
+/// Marker missing or different: clear the index, reindex all active facts, write the
+/// marker. Marker current: backfill only when the index is empty.
+/// Returns the number of facts indexed.
+pub fn ensure_memory_index(
+    conn: &Connection,
+    fts: &TantivyStore,
+    index_dir: &std::path::Path,
+) -> anyhow::Result<usize> {
+    let marker = index_dir.join(INDEX_VERSION_FILE);
+    let current = std::fs::read_to_string(&marker).ok();
+    if current.as_deref().map(str::trim) == Some(MEMORY_INDEX_VERSION) {
+        let n = backfill_memory_fts(conn, fts)?;
+        if n > 0 {
+            info!("Backfilled {n} memory facts into the keyword index");
+        }
+        return Ok(n);
     }
-    for m in &facts {
-        let lang = LanguageDetector.detect(&m.content);
-        fts.add_chunk(&m.id, "memory", &lang, fts_text(&m.content))?;
-    }
-    fts.commit()?;
-    Ok(facts.len())
+    fts.clear()?;
+    let n = index_all_active(conn, fts)?;
+    std::fs::write(&marker, MEMORY_INDEX_VERSION)?;
+    info!("Rebuilt memory keyword index (version {MEMORY_INDEX_VERSION}): {n} facts");
+    Ok(n)
 }
 
 /// Text indexed in the memory FTS for a fact: the leading "User " / "Пользователь "
@@ -82,9 +124,13 @@ impl MemorySvc {
         }
     }
 
-    /// Index every active fact when the memory FTS index is empty (startup backfill).
-    pub fn backfill_fts(&self, conn: &Connection) -> anyhow::Result<usize> {
-        backfill_memory_fts(conn, &self.memory_fts)
+    /// Startup check of the memory FTS index; see [`ensure_memory_index`].
+    pub fn ensure_memory_index(
+        &self,
+        conn: &Connection,
+        index_dir: &std::path::Path,
+    ) -> anyhow::Result<usize> {
+        ensure_memory_index(conn, &self.memory_fts, index_dir)
     }
 
     /// Buffer a fact for the memory FTS index (committed by the caller).
@@ -316,6 +362,7 @@ impl MemorySvc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::repositories::memories::NewMemory;
 
     #[test]
     fn fts_text_strips_the_user_template_prefix() {
@@ -324,5 +371,76 @@ mod tests {
         assert_eq!(fts_text("User's MEMEX_URL is http://memex:8000"), "User's MEMEX_URL is http://memex:8000");
         assert_eq!(fts_text("Prefers dark roast"), "Prefers dark roast");
         assert_eq!(fts_text("Username is alex"), "Username is alex");
+    }
+
+    struct Fixture {
+        dir: tempfile::TempDir,
+        pool: crate::db::pool::DbPool,
+        fts: TantivyStore,
+        ids: Vec<String>,
+    }
+
+    /// Two active facts; only the first is in the index, with the stale "User " prefix.
+    fn stale_index() -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::pool::build_pool(dir.path().join("t.db").to_str().unwrap()).unwrap();
+        let fts = TantivyStore::open(dir.path().join("memories").to_str().unwrap()).unwrap();
+        let conn = pool.get().unwrap();
+        let repo = MemoryRepository::new(&conn);
+        let ids: Vec<String> = ["User lives in Novi Sad", "User uses Python"]
+            .iter()
+            .map(|c| {
+                repo.create(&NewMemory {
+                    content: c,
+                    source: "explicit",
+                    source_id: None,
+                    scope: "default",
+                    forget_after: None,
+                    relation: None,
+                    parent_id: None,
+                    category: None,
+                    project: None,
+                })
+                .unwrap()
+            })
+            .collect();
+        fts.add_chunk(&ids[0], "memory", "en", "User lives in Novi Sad").unwrap();
+        fts.commit().unwrap();
+        drop(conn);
+        Fixture { dir, pool, fts, ids }
+    }
+
+    fn ids_for(fts: &TantivyStore, q: &str) -> Vec<String> {
+        fts.search(q, "en", 10).unwrap().into_iter().map(|h| h.chunk_id).collect()
+    }
+
+    #[test]
+    fn missing_index_version_rebuilds_the_index() {
+        let f = stale_index();
+        let conn = f.pool.get().unwrap();
+        let index_dir = f.dir.path().join("memories");
+
+        let n = ensure_memory_index(&conn, &f.fts, &index_dir).unwrap();
+
+        assert_eq!(n, 2);
+        assert_eq!(ids_for(&f.fts, "Python"), vec![f.ids[1].clone()]);
+        assert_eq!(ids_for(&f.fts, "Novi"), vec![f.ids[0].clone()]);
+        assert!(ids_for(&f.fts, "user").is_empty(), "stale prefixed entry must be gone");
+        let marker = std::fs::read_to_string(index_dir.join(INDEX_VERSION_FILE)).unwrap();
+        assert_eq!(marker.trim(), MEMORY_INDEX_VERSION);
+    }
+
+    #[test]
+    fn current_index_version_does_not_reindex() {
+        let f = stale_index();
+        let conn = f.pool.get().unwrap();
+        let index_dir = f.dir.path().join("memories");
+        std::fs::write(index_dir.join(INDEX_VERSION_FILE), MEMORY_INDEX_VERSION).unwrap();
+
+        let n = ensure_memory_index(&conn, &f.fts, &index_dir).unwrap();
+
+        assert_eq!(n, 0);
+        assert!(ids_for(&f.fts, "Python").is_empty());
+        assert_eq!(f.fts.num_docs(), 1);
     }
 }

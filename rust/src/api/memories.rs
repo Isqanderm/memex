@@ -115,7 +115,7 @@ pub(crate) fn search_memories(
         conn,
         &state.vectors,
         &state.memory_fts,
-        Some(&retrieval.reranker),
+        retrieval.memory_reranker(),
         &q.query,
         &query_vector,
         &lang,

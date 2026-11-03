@@ -33,6 +33,8 @@ pub struct RetrievalService {
     pub memory_fts: Arc<TantivyStore>,
     pub vectors: Arc<VectorStore>,
     pub reranker: Arc<Reranker>,
+    /// Cross-encoder rerank of memory hits (`MEMORY_RERANK`); false keeps RRF order.
+    pub memory_rerank: bool,
     pub llm: Arc<dyn LlmProvider>,
     pub context_builder: ContextBuilder,
     pub memory_search: MemorySearch,
@@ -44,6 +46,11 @@ pub struct RetrievalService {
 }
 
 impl RetrievalService {
+    /// The reranker for memory hits, or `None` when `MEMORY_RERANK` is off.
+    pub fn memory_reranker(&self) -> Option<&Reranker> {
+        self.memory_rerank.then_some(&*self.reranker)
+    }
+
     /// Execute the full retrieval + generation pipeline.
     ///
     /// This method is **synchronous** and is designed to be called from within
@@ -101,7 +108,7 @@ impl RetrievalService {
             conn,
             &self.vectors,
             &self.memory_fts,
-            Some(&self.reranker),
+            self.memory_reranker(),
             query,
             &query_vector,
             &lang,

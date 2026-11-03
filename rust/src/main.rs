@@ -67,7 +67,8 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = Arc::new(build_pool(&config.database_path)?);
     let tantivy = Arc::new(TantivyStore::open(&config.tantivy_path)?);
-    let memory_fts = Arc::new(TantivyStore::open(&format!("{}/memories", config.tantivy_path))?);
+    let memory_fts_dir = format!("{}/memories", config.tantivy_path);
+    let memory_fts = Arc::new(TantivyStore::open(&memory_fts_dir)?);
     let vectors = Arc::new(VectorStore::new(config.embedding_dimensions));
 
     info!("Loading embedding model {}...", config.local_embedding_model);
@@ -95,9 +96,9 @@ async fn main() -> anyhow::Result<()> {
         config.memory_conflict_similarity,
     ));
 
-    let backfilled = memory_svc.backfill_fts(&*pool.get()?)?;
-    if backfilled > 0 {
-        info!("Backfilled {backfilled} memory facts into the keyword index");
+    // Keyword search over facts degrades to vectors only; never abort startup here.
+    if let Err(e) = memory_svc.ensure_memory_index(&*pool.get()?, std::path::Path::new(&memory_fts_dir)) {
+        tracing::warn!("Memory keyword index check failed: {e}");
     }
 
     let retrieval = Arc::new(RetrievalService {
@@ -106,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
         memory_fts: memory_fts.clone(),
         vectors: vectors.clone(),
         reranker,
+        memory_rerank: config.memory_rerank,
         llm: llm.clone(),
         context_builder: ContextBuilder,
         memory_search: MemorySearch::new(config.memory_retrieval_similarity, 10),
