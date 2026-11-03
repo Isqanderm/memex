@@ -1,8 +1,10 @@
 use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::db::repositories::chunks::ChunkRepository;
 use crate::error::AppError;
 
 use super::state::AppState;
@@ -66,55 +68,58 @@ struct ChunksResponse {
     chunks: Vec<ChunkHit>,
 }
 
+/// Vector-only chunk search: embeds `query`, takes the `top_k` nearest chunks and
+/// loads their metadata. Shared by `POST /api/search/chunks` and the MCP
+/// `search_documents` tool.
+pub(crate) fn search_chunks(
+    state: &AppState,
+    conn: &Connection,
+    query: &str,
+    top_k: usize,
+) -> Result<Vec<ChunkHit>, AppError> {
+    let query_vector = state
+        .embed
+        .embed_query(query)
+        .map_err(|e| AppError::Embedding(e.to_string()))?;
+
+    let vector_hits = state
+        .vectors
+        .search_chunks(conn, &query_vector, top_k)
+        .map_err(AppError::Db)?;
+
+    let ids: Vec<String> = vector_hits.iter().map(|h| h.id.clone()).collect();
+    let chunks = ChunkRepository::new(conn).get_by_ids(&ids).map_err(AppError::Db)?;
+
+    let mut hits: Vec<ChunkHit> = chunks
+        .into_iter()
+        .map(|c| {
+            let score = vector_hits
+                .iter()
+                .find(|h| h.id == c.id)
+                .map(|h| 1.0 - h.distance)
+                .unwrap_or(0.0);
+            ChunkHit {
+                chunk_id: c.id,
+                doc_id: c.doc_id,
+                content: c.content,
+                score,
+                section_heading: c.section_heading,
+                page_number: c.page_number.map(|p| p as u32),
+            }
+        })
+        .collect();
+    hits.sort_by(|a, b| b.score.total_cmp(&a.score));
+    Ok(hits)
+}
+
 async fn search_chunks_handler(
     State(state): State<AppState>,
     Json(body): Json<QueryRequest>,
 ) -> Result<Json<ChunksResponse>, AppError> {
-    let pool = state.pool.clone();
-    let embed = state.embed.clone();
-    let vectors = state.vectors.clone();
-    let query = body.query.clone();
     let top_k = body.top_k.unwrap_or(10);
-
-    let hits = tokio::task::spawn_blocking(move || -> Result<Vec<ChunkHit>, AppError> {
-        let conn = pool.get().map_err(AppError::Pool)?;
-
-        // Embed the query
-        let query_vector = embed
-            .embed_query(&query)
-            .map_err(|e| AppError::Embedding(e.to_string()))?;
-
-        // Vector search
-        let vector_hits = vectors
-            .search_chunks(&conn, &query_vector, top_k)
-            .map_err(AppError::Db)?;
-
-        // Load chunk metadata
-        use crate::db::repositories::chunks::ChunkRepository;
-        let chunk_repo = ChunkRepository::new(&conn);
-        let ids: Vec<String> = vector_hits.iter().map(|h| h.id.clone()).collect();
-        let chunks = chunk_repo.get_by_ids(&ids).map_err(AppError::Db)?;
-
-        let results = chunks
-            .into_iter()
-            .map(|c| {
-                let score = vector_hits
-                    .iter()
-                    .find(|h| h.id == c.id)
-                    .map(|h| 1.0 - h.distance)
-                    .unwrap_or(0.0);
-                ChunkHit {
-                    chunk_id: c.id,
-                    doc_id: c.doc_id,
-                    content: c.content,
-                    score,
-                    section_heading: c.section_heading,
-                    page_number: c.page_number.map(|p| p as u32),
-                }
-            })
-            .collect();
-
-        Ok(results)
+    let hits = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        search_chunks(&state, &conn, &body.query, top_k)
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;

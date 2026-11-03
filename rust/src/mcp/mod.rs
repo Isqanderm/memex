@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{delete_document_by_id, enqueue_upload};
 use crate::api::memories::{enqueue_observe, search_error, search_memories, SearchRequest};
+use crate::api::query::search_chunks;
 use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
@@ -73,6 +74,15 @@ pub struct MemoriesParams {
     pub category: Option<String>,
     /// Optional scope filter (default: all scopes).
     pub scope: Option<String>,
+}
+
+/// Parameters for the `search_documents` tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct SearchDocumentsParams {
+    /// Query text.
+    pub query: String,
+    /// Maximum number of chunks to return (default 5, at most 50).
+    pub top_k: Option<usize>,
 }
 
 /// Parameters for the `index_text` tool.
@@ -436,6 +446,56 @@ impl MemexMcp {
                 status => ok_text(format!("{status} — not ready yet, check again later.")),
             },
         }
+    }
+
+    #[tool(description = "Search indexed documents by meaning. Returns the best matching chunks with document title, doc_id, chunk id and score; no LLM involved.")]
+    pub async fn search_documents(
+        &self,
+        Parameters(p): Parameters<SearchDocumentsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if p.query.trim().is_empty() {
+            return domain_error("query must not be blank");
+        }
+        let state = self.state.clone();
+        let top_k = p.top_k.unwrap_or(5).clamp(1, 50);
+        let hits = self
+            .with_conn(move |conn| {
+                let hits = search_chunks(&state, conn, &p.query, top_k)?;
+                let docs = DocumentRepository::new(conn);
+                let mut out = Vec::with_capacity(hits.len());
+                for h in hits {
+                    let label = match docs.get_by_id(&h.doc_id).map_err(AppError::Db)? {
+                        Some(d) => d.title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
+                            let name = d.source.rsplit(['/', '\\']).next().unwrap_or("");
+                            if name.is_empty() { h.doc_id.clone() } else { name.to_string() }
+                        }),
+                        None => h.doc_id.clone(),
+                    };
+                    out.push((label, h));
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(internal)?;
+
+        if hits.is_empty() {
+            return ok_text("No matching chunks.");
+        }
+        let lines: Vec<String> = hits
+            .iter()
+            .map(|(label, h)| {
+                let text = h.content.split_whitespace().collect::<Vec<_>>().join(" ");
+                let snippet = match text.char_indices().nth(300) {
+                    Some((i, _)) => format!("{}…", &text[..i]),
+                    None => text,
+                };
+                format!(
+                    "- [{label}] {snippet} (doc_id: {}, chunk: {}, score: {:.3})",
+                    h.doc_id, h.chunk_id, h.score
+                )
+            })
+            .collect();
+        ok_text(lines.join("\n"))
     }
 
     #[tool(description = "List all indexed documents: id, title, mime type, date.")]
