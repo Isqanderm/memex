@@ -252,7 +252,7 @@ The Rust version exposes the same REST API as the Python version with identical 
 | **CPU** | ARMv8 / x86_64 | Any modern core |
 | **OS** | Linux | Linux |
 
-RAM: about 2.3 GiB measured after the first query on the arm64 Docker build (both ONNX models loaded), hence the 3 GB minimum.
+RAM: about 2.3 GiB measured after the first query on the arm64 Docker build (both ONNX models loaded), hence the 3 GB minimum. Measured idle after startup on arm64; a reranked search on a real corpus may use more.
 
 Models (~1.2 GB with the default reranker) are cached in `MODEL_CACHE_DIR`: `/app/models` in Docker (baked into the image), `data/models` for the binary.
 

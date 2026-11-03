@@ -16,8 +16,8 @@
 
 | | Python | Rust |
 |---|---|---|
-| **Best for** | Full-featured, scalable | Low-RAM servers, Raspberry Pi |
-| **RAM** | ~2.5 GB | ~80–120 MB |
+| **Best for** | Full-featured, scalable | Single binary, no PostgreSQL; needs ≥3 GB RAM |
+| **RAM** | ~2.5 GB | ~2.3 GiB (both ONNX models loaded), min 3 GB |
 | **Dependencies** | Docker + PostgreSQL | Single binary |
 | **Quick start** | `docker compose up` | `./memex` |
 | **Docs** | This file | [docs/rust.md](docs/rust.md) |

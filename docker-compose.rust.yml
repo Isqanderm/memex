@@ -11,6 +11,7 @@
 #
 # Sizes: image ~1.8 GB. First start loads the models in ~20-30 s.
 # Memory: ~2.3 GiB (measured after first query, arm64 build). Plan for 3 GB+ of RAM.
+#   Measured idle after startup on arm64; a reranked search on a real corpus may use more.
 
 services:
   memex:
