@@ -61,7 +61,7 @@ impl MemorySearch {
         if self.top_k == 0 {
             return Ok(vec![]);
         }
-        let candidates = self.top_k * 2;
+        let candidates = self.top_k.saturating_mul(2);
 
         let vec_hits: Vec<SearchHit> = vectors
             .find_similar_memories(conn, query_vector, candidates, self.retrieval_similarity)?

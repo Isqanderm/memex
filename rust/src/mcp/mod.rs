@@ -16,7 +16,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{delete_document_by_id, enqueue_upload};
-use crate::api::memories::{search_memories, SearchRequest};
+use crate::api::memories::{search_error, search_memories, SearchRequest};
 use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
@@ -184,10 +184,14 @@ impl MemexMcp {
         };
         let hits = self
             .with_conn(move |conn| {
-                search_memories(&state, conn, &req).map_err(|e| AppError::Llm(e.to_string()))
+                search_memories(&state, conn, &req).map_err(search_error)
             })
-            .await
-            .map_err(internal)?;
+            .await;
+        let hits = match hits {
+            Ok(h) => h,
+            Err(AppError::BadRequest(m)) => return domain_error(m),
+            Err(e) => return Err(internal(e)),
+        };
 
         if hits.is_empty() {
             return ok_text("No matching memories.".to_string());

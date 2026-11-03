@@ -78,17 +78,36 @@ pub struct SearchResponse {
     pub hits: Vec<SearchHitItem>,
 }
 
+/// Upper bound on `top_k` for a single request.
+const MAX_TOP_K: usize = 100;
+
+pub(crate) fn clamp_top_k(n: usize) -> usize {
+    n.clamp(1, MAX_TOP_K)
+}
+
+/// Map an error from [`search_memories`] to an [`AppError`], keeping bad-request errors.
+pub(crate) fn search_error(e: anyhow::Error) -> AppError {
+    match e.downcast::<AppError>() {
+        Ok(AppError::BadRequest(m)) => AppError::BadRequest(m),
+        Ok(other) => AppError::Llm(other.to_string()),
+        Err(e) => AppError::Llm(e.to_string()),
+    }
+}
+
 /// Hybrid memory search without an LLM; records the access of every returned fact.
 pub(crate) fn search_memories(
     state: &AppState,
     conn: &Connection,
     q: &SearchRequest,
 ) -> anyhow::Result<Vec<MemoryHit>> {
+    if q.query.trim().is_empty() {
+        return Err(AppError::BadRequest("query must not be blank".to_string()).into());
+    }
     let retrieval = &state.retrieval;
     let query_vector = state.embed.embed_query(&q.query)?;
     let lang = retrieval.lang.detect(&q.query);
     let search = MemorySearch {
-        top_k: q.top_k,
+        top_k: clamp_top_k(q.top_k),
         ..retrieval.memory_search.clone()
     };
     let hits = search.search(
@@ -199,7 +218,7 @@ async fn search_handler(
 ) -> Result<Json<SearchResponse>, AppError> {
     let hits = tokio::task::spawn_blocking(move || {
         let conn = state.pool.get().map_err(AppError::Pool)?;
-        search_memories(&state, &conn, &body).map_err(|e| AppError::Llm(e.to_string()))
+        search_memories(&state, &conn, &body).map_err(search_error)
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
@@ -317,5 +336,17 @@ async fn forget_handler(
         Ok(Json(serde_json::json!({"status": "deleted"})))
     } else {
         Err(AppError::NotFound(format!("memory {memory_id}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_top_k;
+
+    #[test]
+    fn top_k_is_clamped() {
+        assert_eq!(clamp_top_k(0), 1);
+        assert_eq!(clamp_top_k(10), 10);
+        assert_eq!(clamp_top_k(1000), 100);
     }
 }

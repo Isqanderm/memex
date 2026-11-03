@@ -96,7 +96,16 @@ class TestMemoryContract:
     def test_memory_search_shape(self, client: httpx.Client) -> None:
         resp = client.post("/api/memory/search", json={"query": "anything"})
         assert resp.status_code == 200
-        assert isinstance(resp.json()["hits"], list)
+        hits = resp.json()["hits"]
+        assert isinstance(hits, list)
+        fields = {"id", "content", "score", "scope", "category", "project",
+                  "source", "created_at", "access_count"}
+        for hit in hits:
+            assert set(hit) == fields
+
+    def test_memory_search_blank_query_is_400(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/search", json={"query": "   "})
+        assert resp.status_code == 400
 
     def test_delete_nonexistent_memory_returns_404(self, client: httpx.Client) -> None:
         resp = client.delete("/api/memory/nonexistent-id-00000000")
