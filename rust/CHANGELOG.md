@@ -9,10 +9,15 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ## [3.0.0-rc.5] — 2026-11-03
 
+### Upgrading from rc.4
+
+- The model cache moved to `MODEL_CACHE_DIR` (default `data/models`) and the default reranker changed, so the first start downloads about 1.2 GB again. Set `RERANKER_MODEL=bge-reranker-base` to keep the previous ranking.
+- The `memex-mcp` binary is gone; use `claude mcp add --transport http memex http://localhost:8000/mcp`.
+
 ### Added
 
 - `LLM_BASE_URL` — any OpenAI-compatible endpoint (e.g. Ollama); `OPENAI_LLM_API_KEY` is optional when it is set
-- JSON mode for LLM calls
+- JSON mode for fact extraction
 - MCP over Streamable HTTP at `/mcp` in the main process (stateless, JSON responses, 16 MiB body limit, browser `Origin` rejected, `Host` allow-list via `MCP_ALLOWED_HOSTS`)
 - MCP tools `index_text` and `delete_document`
 - `memex --download-models` pre-downloads the ONNX models into `MODEL_CACHE_DIR` and exits

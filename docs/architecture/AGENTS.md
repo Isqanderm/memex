@@ -27,7 +27,7 @@ Memex существует в двух вариантах с независим�
 | **Docker** | `ghcr.io/…/memex:2.1.0` | `ghcr.io/…/memex:rust-3.0.0` (модели внутри образа) |
 | **Changelog** | `CHANGELOG.md` | `rust/CHANGELOG.md` |
 | **CI** | `.github/workflows/test.yml` | `.github/workflows/rust-ci.yml` |
-| **RAM idle** | ~2.5 GB | ~80-120 MB |
+| **RAM** | ~2.5 GB (idle) | ~2.3 GiB (после первого запроса, обе модели загружены; arm64-сборка) |
 | **MCP** | stdio (`mcp_server.py`) | HTTP `/mcp` в основном процессе |
 
 ### Правила поддержки двух версий

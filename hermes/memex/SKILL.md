@@ -116,6 +116,19 @@ Arguments:
 
 ---
 
+## Rust (HTTP) tool names
+
+When Memex runs as the Rust edition and is connected over HTTP (`claude mcp add --transport http memex http://localhost:8000/mcp`), the tool set differs: there is no `index_file` and no `list_memories`.
+
+| Python tool | Rust (HTTP) tool |
+|---|---|
+| `index_file` (path on disk) | `index_text` (`content` + `title`, async: poll `check_indexing(job_id)`) |
+| `list_memories` (documents) | `list_documents` |
+
+The 10 Rust tools: `remember`, `recall`, `forget`, `context`, `observe`, `memories`, `index_text`, `check_indexing`, `list_documents`, `delete_document`. `delete_document(doc_id)` removes an indexed document; `forget(memory_id)` removes a memory fact. Tool names are exposed under your client's MCP prefix.
+
+---
+
 ## Typical Session
 
 ```
