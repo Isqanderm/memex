@@ -156,6 +156,12 @@ Edit `~/.openclaw/openclaw.json` (or `/home/node/.openclaw/openclaw.json` inside
 }
 ```
 
+**Rust edition:** the server speaks MCP over HTTP itself, so no bridge is needed. Use this entry instead:
+
+```json
+"memex": { "url": "http://memex:8000/mcp", "transport": "streamable-http" }
+```
+
 > **Common mistake:** accidentally creating a new top-level `"mcp"` key when one already exists — merge into the existing `"mcp"` object, don't duplicate it.
 
 ### Step 7 — Restart OpenClaw

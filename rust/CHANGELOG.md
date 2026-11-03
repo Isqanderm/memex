@@ -7,6 +7,31 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ---
 
+## [3.0.0-rc.5] — 2026-11-03
+
+### Added
+
+- `LLM_BASE_URL` — any OpenAI-compatible endpoint (e.g. Ollama); `OPENAI_LLM_API_KEY` is optional when it is set
+- JSON mode for LLM calls
+- MCP over Streamable HTTP at `/mcp` in the main process (stateless, JSON responses, 16 MiB body limit, browser `Origin` rejected, `Host` allow-list via `MCP_ALLOWED_HOSTS`)
+- MCP tools `index_text` and `delete_document`
+- `memex --download-models` pre-downloads the ONNX models into `MODEL_CACHE_DIR` and exits
+- `RERANKER_MODEL` option, including `bge-reranker-v2-m3`
+- Docker image `ghcr.io/isqanderm/memex:rust-<version>` built by `docker.yml` on `rust/v*` tags
+
+### Removed
+
+- `memex-mcp` binary (and its release artifacts); use `claude mcp add --transport http memex http://localhost:8000/mcp`
+- MCP tool `index_file` (use `index_text` or the upload API)
+
+### Changed
+
+- `docker-compose.rust.yml` binds the port to `127.0.0.1:8000` and uses a single `./data:/app/data` mount
+- ONNX models are baked into the image at `/app/models` (image is ~1.8 GB)
+- Default reranker is `jina-reranker-v2-base-multilingual`
+
+---
+
 ## [3.0.0-rc.4] — 2026-06-05
 
 ### Fixed

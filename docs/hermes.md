@@ -145,6 +145,15 @@ mcp_servers:
     connect_timeout: 60
 ```
 
+**Rust edition:** the server speaks MCP over HTTP itself, so no bridge is needed. Use this block instead (tools: `context`, `remember`, `recall`, `observe`, `memories`, `index_text`, `check_indexing`, `list_documents`, `forget`, `delete_document`):
+
+```yaml
+mcp_servers:
+  memex:
+    url: http://memex:8000/mcp
+    transport: streamable-http
+```
+
 > **Common mistake:** accidentally nesting `memex:` inside another section (e.g. `web:`) due to wrong indentation. Double-check the YAML level.
 
 ### Step 7 — Restart Hermes

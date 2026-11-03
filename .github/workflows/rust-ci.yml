@@ -87,7 +87,9 @@ jobs:
           LLM_MODEL=gpt-4o-mini
           LLM_MAX_TOKENS=2048
           LLM_TEMPERATURE=0.1
-          OPENAI_LLM_API_KEY=dummy-key-for-contract-tests
+          LLM_BASE_URL=http://127.0.0.1:9/v1
+          MODEL_CACHE_DIR=data/models
+          MCP_ALLOWED_HOSTS=localhost,127.0.0.1,memex
           HOST=0.0.0.0
           PORT=8000
           EOF

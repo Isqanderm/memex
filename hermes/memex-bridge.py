@@ -15,6 +15,12 @@ Add to ~/.hermes/config.yaml:
       env:
         MEMEX_URL: http://memex:8000
 
+Rust edition (MCP over HTTP, no bridge needed):
+  mcp_servers:
+    memex:
+      url: http://memex:8000/mcp
+      transport: streamable-http
+
 Tools: context, remember, recall, observe, memories,
        index_file, check_indexing, list_memories, forget
 """
