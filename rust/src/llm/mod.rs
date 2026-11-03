@@ -21,6 +21,12 @@ pub type TokenStream = Pin<Box<dyn Stream<Item = anyhow::Result<String>> + Send>
 pub trait LlmProvider: Send + Sync {
     async fn complete(&self, prompt: &str) -> anyhow::Result<LlmResponse>;
     async fn complete_stream(&self, prompt: &str) -> anyhow::Result<TokenStream>;
+
+    /// Completion constrained to a JSON object. Providers without a native
+    /// JSON mode fall back to plain `complete`.
+    async fn complete_json(&self, prompt: &str) -> anyhow::Result<LlmResponse> {
+        self.complete(prompt).await
+    }
 }
 
 pub fn create_llm_provider(config: &crate::config::Config) -> anyhow::Result<Arc<dyn LlmProvider>> {
@@ -39,11 +45,9 @@ pub fn create_llm_provider(config: &crate::config::Config) -> anyhow::Result<Arc
             )))
         }
         LlmProviderKind::OpenAI => {
-            let api_key = config.openai_llm_api_key.clone().ok_or_else(|| {
-                anyhow::anyhow!("OPENAI_LLM_API_KEY is required for OpenAI provider")
-            })?;
             Ok(Arc::new(OpenAiProvider::new(
-                api_key,
+                config.openai_llm_api_key.clone(),
+                config.llm_base_url.clone(),
                 config.llm_model.clone(),
                 config.llm_max_tokens,
                 config.llm_temperature,
