@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::db::repositories::memories::Memory;
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::db::repositories::memories::{Memory, MemoryRepository};
 use crate::llm::LlmProvider;
 
 const PROFILE_PROMPT: &str = r#"Summarize the following facts about a user into a concise profile (2-4 sentences max, ≤150 tokens).
@@ -24,6 +26,45 @@ pub struct ProfileService {
 impl ProfileService {
     pub fn new(llm: Arc<dyn LlmProvider>) -> Self {
         Self { llm }
+    }
+
+    /// Cached profile: rebuilt only when the active-memory fingerprint (or scope) changes.
+    /// SQLite work is synchronous on `conn`; the LLM is awaited only on a cache miss.
+    pub async fn get_or_build(
+        &self,
+        conn: &Connection,
+        scope: Option<&str>,
+    ) -> anyhow::Result<UserProfile> {
+        let repo = MemoryRepository::new(conn);
+        let fp = format!("{}|{}", scope.unwrap_or("*"), repo.fingerprint()?);
+
+        let cached = conn
+            .query_row(
+                "SELECT static_summary, dynamic_summary, raw_count FROM profile_cache
+                 WHERE id = 1 AND fingerprint = ?1",
+                params![fp],
+                |r| {
+                    Ok(UserProfile {
+                        static_summary: r.get(0)?,
+                        dynamic_summary: r.get(1)?,
+                        raw_count: r.get::<_, i64>(2)? as usize,
+                    })
+                },
+            )
+            .optional()?;
+        if let Some(p) = cached {
+            return Ok(p);
+        }
+
+        let memories = repo.get_all_active(scope)?;
+        let profile = self.build_profile(&memories).await?;
+        conn.execute(
+            "INSERT OR REPLACE INTO profile_cache
+                 (id, fingerprint, static_summary, dynamic_summary, raw_count, built_at)
+             VALUES (1, ?1, ?2, ?3, ?4, datetime('now'))",
+            params![fp, profile.static_summary, profile.dynamic_summary, profile.raw_count as i64],
+        )?;
+        Ok(profile)
     }
 
     pub async fn build_profile(&self, memories: &[Memory]) -> anyhow::Result<UserProfile> {
@@ -78,5 +119,63 @@ impl ProfileService {
         let prompt = PROFILE_PROMPT.replace("{facts}", &facts);
         let response = self.llm.complete(&prompt).await?;
         Ok(response.answer.trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::pool::build_pool;
+    use crate::db::repositories::memories::NewMemory;
+    use crate::llm::test_support::ScriptedLlm;
+    use std::sync::atomic::Ordering;
+
+    fn nm(content: &str) -> NewMemory<'_> {
+        NewMemory {
+            content,
+            source: "t",
+            source_id: None,
+            scope: "default",
+            forget_after: None,
+            relation: None,
+            parent_id: None,
+            category: None,
+            project: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn second_call_with_same_fingerprint_does_not_call_llm() {
+        let pool = build_pool(":memory:").unwrap();
+        let conn = pool.get().unwrap();
+        MemoryRepository::new(&conn).create(&nm("User likes Rust")).unwrap();
+        let llm = Arc::new(ScriptedLlm::new(vec!["summary one", "summary two"]));
+        let svc = ProfileService::new(llm.clone());
+
+        let first = svc.get_or_build(&conn, None).await.unwrap();
+        let calls = llm.calls.load(Ordering::SeqCst);
+        assert!(calls >= 1);
+        let second = svc.get_or_build(&conn, None).await.unwrap();
+        assert_eq!(llm.calls.load(Ordering::SeqCst), calls);
+        assert_eq!(first.dynamic_summary, second.dynamic_summary);
+        assert_eq!(second.raw_count, 1);
+    }
+
+    #[tokio::test]
+    async fn forget_invalidates_cache() {
+        let pool = build_pool(":memory:").unwrap();
+        let conn = pool.get().unwrap();
+        let repo = MemoryRepository::new(&conn);
+        repo.create(&nm("fact a")).unwrap();
+        let b = repo.create(&nm("fact b")).unwrap();
+        let llm = Arc::new(ScriptedLlm::new(vec!["s1", "s2"]));
+        let svc = ProfileService::new(llm.clone());
+
+        svc.get_or_build(&conn, None).await.unwrap();
+        let before = llm.calls.load(Ordering::SeqCst);
+        repo.deactivate(&b).unwrap();
+        let p = svc.get_or_build(&conn, None).await.unwrap();
+        assert!(llm.calls.load(Ordering::SeqCst) > before);
+        assert_eq!(p.raw_count, 1);
     }
 }

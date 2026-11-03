@@ -4,6 +4,8 @@ use futures::Stream;
 
 mod claude;
 mod openai;
+#[cfg(test)]
+pub mod test_support;
 
 pub use claude::ClaudeProvider;
 pub use openai::OpenAiProvider;

@@ -237,25 +237,19 @@ impl MemexMcp {
 
     #[tool(description = "Get user profile as static (stable facts) and dynamic (recent activity). Call as the FIRST tool at the start of every session.")]
     pub async fn context(&self) -> Result<CallToolResult, ErrorData> {
-        let memories = self
-            .with_conn(|conn| {
-                MemoryRepository::new(conn)
-                    .get_all_active(None)
-                    .map_err(AppError::Db)
+        let profile_svc = self.state.profile_svc.clone();
+        let profile = self
+            .with_conn(move |conn| {
+                tokio::runtime::Handle::current()
+                    .block_on(profile_svc.get_or_build(conn, None))
+                    .map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
             .map_err(internal)?;
 
-        if memories.is_empty() {
+        if profile.raw_count == 0 {
             return ok_text("No memories yet.");
         }
-
-        let profile = self
-            .state
-            .profile_svc
-            .build_profile(&memories)
-            .await
-            .map_err(internal)?;
 
         let mut lines = Vec::new();
         if !profile.static_summary.is_empty() {

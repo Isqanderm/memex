@@ -291,22 +291,17 @@ async fn context_handler(
 ) -> Result<Json<ProfileResponse>, AppError> {
     let pool = state.pool.clone();
     let scope = params.scope.clone();
+    let profile_svc = state.profile_svc.clone();
 
-    // Get all active memories (blocking)
-    let memories = tokio::task::spawn_blocking(move || -> Result<Vec<Memory>, AppError> {
+    // SQLite reads/writes are blocking; the LLM (cache miss only) is driven via block_on.
+    let profile = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
-        let repo = MemoryRepository::new(&conn);
-        repo.get_all_active(scope.as_deref()).map_err(AppError::Db)
+        tokio::runtime::Handle::current()
+            .block_on(profile_svc.get_or_build(&conn, scope.as_deref()))
+            .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
-
-    // Build profile (async, calls LLM) — profile_svc is Arc<ProfileService> which is Send+Sync
-    let profile_svc = state.profile_svc.clone();
-    let profile = profile_svc
-        .build_profile(&memories)
-        .await
-        .map_err(|e| AppError::Llm(e.to_string()))?;
 
     Ok(Json(ProfileResponse {
         static_summary: profile.static_summary,
