@@ -170,6 +170,7 @@ mod tests {
             source: "chat".to_string(),
             category: Some("personal".to_string()),
             project: None,
+            scope: "default".to_string(),
             created_at: "2026-01-15T10:00:00".to_string(),
         };
         let ctx = builder.build("Where does the user live?", &[], &[mem_hit], "2026-06-04");

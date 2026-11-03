@@ -260,6 +260,17 @@ impl TantivyStore {
         Ok(())
     }
 
+    /// Delete the document with the given `chunk_id` (buffered; call [`commit`]).
+    pub fn delete_by_chunk_id(&self, chunk_id: &str) -> anyhow::Result<()> {
+        let term = Term::from_field_text(self.f_chunk_id, chunk_id);
+        let w = self
+            .writer
+            .read()
+            .map_err(|e| anyhow::anyhow!("Writer lock poisoned: {e}"))?;
+        w.delete_term(term);
+        Ok(())
+    }
+
     /// Search the index for `query_text` using the stemmer for `language`.
     ///
     /// Returns at most `top_k` results sorted by BM25 score (descending).

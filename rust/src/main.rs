@@ -66,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = Arc::new(build_pool(&config.database_path)?);
     let tantivy = Arc::new(TantivyStore::open(&config.tantivy_path)?);
+    let memory_fts = Arc::new(TantivyStore::open(&format!("{}/memories", config.tantivy_path))?);
     let vectors = Arc::new(VectorStore::new(config.embedding_dimensions));
 
     info!("Loading embedding model {}...", config.local_embedding_model);
@@ -85,16 +86,23 @@ async fn main() -> anyhow::Result<()> {
     let llm = create_llm_provider(&config)?;
     let extractor = Arc::new(FactExtractor::new(llm.clone()));
     let profile_svc = Arc::new(ProfileService::new(llm.clone()));
-    let memory_svc = Arc::new(MemorySvc::new(extractor.clone(), embed.clone(), vectors.clone()));
+    let memory_svc = Arc::new(MemorySvc::new(
+        extractor.clone(),
+        embed.clone(),
+        vectors.clone(),
+        memory_fts.clone(),
+        config.memory_conflict_similarity,
+    ));
 
     let retrieval = Arc::new(RetrievalService {
         embed: embed.clone(),
         tantivy: tantivy.clone(),
+        memory_fts: memory_fts.clone(),
         vectors: vectors.clone(),
         reranker,
         llm: llm.clone(),
         context_builder: ContextBuilder,
-        memory_search: MemorySearch::new(),
+        memory_search: MemorySearch::new(config.memory_retrieval_similarity, 10),
         lang: LanguageDetector,
         semantic_top_k: config.semantic_top_k,
         bm25_top_k: config.bm25_top_k,
@@ -140,6 +148,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         config: Arc::new(config.clone()),
         tantivy,
+        memory_fts,
         vectors,
         embed,
         retrieval,

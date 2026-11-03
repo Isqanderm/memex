@@ -29,6 +29,8 @@ pub struct QueryResult {
 pub struct RetrievalService {
     pub embed: Arc<EmbeddingClient>,
     pub tantivy: Arc<TantivyStore>,
+    /// Full-text index of memory facts (separate from the document index).
+    pub memory_fts: Arc<TantivyStore>,
     pub vectors: Arc<VectorStore>,
     pub reranker: Arc<Reranker>,
     pub llm: Arc<dyn LlmProvider>,
@@ -95,8 +97,16 @@ impl RetrievalService {
         };
 
         // Step 9: Memory search
-        let mem_hits =
-            self.memory_search.search(conn, &self.vectors, &query_vector, memory_category)?;
+        let mem_hits = self.memory_search.search(
+            conn,
+            &self.vectors,
+            &self.memory_fts,
+            query,
+            &query_vector,
+            &lang,
+            None,
+            memory_category,
+        )?;
 
         // Step 10: Build context
         let today = Local::now().format("%Y-%m-%d").to_string();

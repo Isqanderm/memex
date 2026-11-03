@@ -6,6 +6,8 @@ use tracing::{info, warn};
 use crate::db::repositories::memories::{MemoryRepository, NewMemory};
 use crate::db::repositories::memory_sources::MemorySourceRepository;
 use crate::ingestion::embeddings::EmbeddingClient;
+use crate::ingestion::language::LanguageDetector;
+use crate::search::tantivy_fts::TantivyStore;
 use crate::search::vectors::VectorStore;
 
 use super::extractor::FactExtractor;
@@ -27,6 +29,10 @@ pub struct MemorySvc {
     pub extractor: Arc<FactExtractor>,
     pub embed: Arc<EmbeddingClient>,
     pub vectors: Arc<VectorStore>,
+    /// Full-text index of memory facts; `chunk_id` = memory id.
+    pub memory_fts: Arc<TantivyStore>,
+    /// Cosine similarity above which an existing fact is a conflict candidate.
+    pub conflict_similarity: f32,
 }
 
 impl MemorySvc {
@@ -34,12 +40,29 @@ impl MemorySvc {
         extractor: Arc<FactExtractor>,
         embed: Arc<EmbeddingClient>,
         vectors: Arc<VectorStore>,
+        memory_fts: Arc<TantivyStore>,
+        conflict_similarity: f32,
     ) -> Self {
         Self {
             extractor,
             embed,
             vectors,
+            memory_fts,
+            conflict_similarity,
         }
+    }
+
+    /// Index a fact in the memory FTS index and commit.
+    fn index_fact(&self, memory_id: &str, content: &str) -> anyhow::Result<()> {
+        let lang = LanguageDetector.detect(content);
+        self.memory_fts.add_chunk(memory_id, "memory", &lang, content)?;
+        self.memory_fts.commit()
+    }
+
+    /// Remove a fact from the memory FTS index and commit.
+    fn deindex_fact(&self, memory_id: &str) -> anyhow::Result<()> {
+        self.memory_fts.delete_by_chunk_id(memory_id)?;
+        self.memory_fts.commit()
     }
 
     pub async fn remember(
@@ -72,7 +95,7 @@ impl MemorySvc {
             // Find similar existing memories
             let similar_hits = self
                 .vectors
-                .find_similar_memories(conn, &vector, 5, 0.60)
+                .find_similar_memories(conn, &vector, 5, self.conflict_similarity)
                 .unwrap_or_default();
 
             // Load similar memory contents
@@ -103,6 +126,9 @@ impl MemorySvc {
                                         warn!("Failed to deactivate memory {}: {e}", rel.memory_id);
                                     } else {
                                         memories_updated += 1;
+                                        if let Err(e) = self.deindex_fact(&rel.memory_id) {
+                                            warn!("Failed to deindex memory {}: {e}", rel.memory_id);
+                                        }
                                     }
                                     // Set parent only if not already set
                                     if parent_id.is_none() {
@@ -150,6 +176,9 @@ impl MemorySvc {
             if let Err(e) = self.vectors.insert_memory(conn, &memory_id, &vector) {
                 warn!("Failed to insert memory vector for {memory_id}: {e}");
             }
+            if let Err(e) = self.index_fact(&memory_id, &fact.content) {
+                warn!("Failed to index memory {memory_id} for full-text search: {e}");
+            }
         }
 
         Ok(RememberResult {
@@ -185,6 +214,9 @@ impl MemorySvc {
         // Remove the vector
         if let Err(e) = self.vectors.delete_memory(conn, memory_id) {
             warn!("Failed to delete vector for memory {memory_id}: {e}");
+        }
+        if let Err(e) = self.deindex_fact(memory_id) {
+            warn!("Failed to deindex memory {memory_id}: {e}");
         }
 
         Ok(deactivated)
