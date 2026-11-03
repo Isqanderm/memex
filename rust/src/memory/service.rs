@@ -20,6 +20,25 @@ Conversation:
 
 Summarize the key new facts about the user from this conversation."#;
 
+/// Index every active fact into an empty memory FTS index; commits once.
+///
+/// Returns the number of facts indexed (0 when the index already has documents).
+pub fn backfill_memory_fts(conn: &Connection, fts: &TantivyStore) -> anyhow::Result<usize> {
+    if fts.num_docs() > 0 {
+        return Ok(0);
+    }
+    let facts = MemoryRepository::new(conn).get_all_active(None)?;
+    if facts.is_empty() {
+        return Ok(0);
+    }
+    for m in &facts {
+        let lang = LanguageDetector.detect(&m.content);
+        fts.add_chunk(&m.id, "memory", &lang, &m.content)?;
+    }
+    fts.commit()?;
+    Ok(facts.len())
+}
+
 pub struct RememberResult {
     pub facts_extracted: usize,
     pub memories_updated: usize,
@@ -52,17 +71,22 @@ impl MemorySvc {
         }
     }
 
-    /// Index a fact in the memory FTS index and commit.
-    fn index_fact(&self, memory_id: &str, content: &str) -> anyhow::Result<()> {
-        let lang = LanguageDetector.detect(content);
-        self.memory_fts.add_chunk(memory_id, "memory", &lang, content)?;
-        self.memory_fts.commit()
+    /// Index every active fact when the memory FTS index is empty (startup backfill).
+    pub fn backfill_fts(&self, conn: &Connection) -> anyhow::Result<usize> {
+        backfill_memory_fts(conn, &self.memory_fts)
     }
 
-    /// Remove a fact from the memory FTS index and commit.
-    fn deindex_fact(&self, memory_id: &str) -> anyhow::Result<()> {
-        self.memory_fts.delete_by_chunk_id(memory_id)?;
-        self.memory_fts.commit()
+    /// Buffer a fact for the memory FTS index (committed by the caller).
+    fn index_fact(&self, memory_id: &str, content: &str) -> anyhow::Result<()> {
+        let lang = LanguageDetector.detect(content);
+        self.memory_fts.add_chunk(memory_id, "memory", &lang, content)
+    }
+
+    /// Commit buffered FTS changes; failures are logged, SQLite stays the source of truth.
+    fn commit_fts(&self) {
+        if let Err(e) = self.memory_fts.commit() {
+            warn!("Failed to commit memory full-text index: {e}");
+        }
     }
 
     pub async fn remember(
@@ -126,7 +150,7 @@ impl MemorySvc {
                                         warn!("Failed to deactivate memory {}: {e}", rel.memory_id);
                                     } else {
                                         memories_updated += 1;
-                                        if let Err(e) = self.deindex_fact(&rel.memory_id) {
+                                        if let Err(e) = self.memory_fts.delete_by_chunk_id(&rel.memory_id) {
                                             warn!("Failed to deindex memory {}: {e}", rel.memory_id);
                                         }
                                     }
@@ -181,6 +205,8 @@ impl MemorySvc {
             }
         }
 
+        self.commit_fts();
+
         Ok(RememberResult {
             facts_extracted,
             memories_updated,
@@ -215,9 +241,10 @@ impl MemorySvc {
         if let Err(e) = self.vectors.delete_memory(conn, memory_id) {
             warn!("Failed to delete vector for memory {memory_id}: {e}");
         }
-        if let Err(e) = self.deindex_fact(memory_id) {
+        if let Err(e) = self.memory_fts.delete_by_chunk_id(memory_id) {
             warn!("Failed to deindex memory {memory_id}: {e}");
         }
+        self.commit_fts();
 
         Ok(deactivated)
     }

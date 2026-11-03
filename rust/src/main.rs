@@ -94,6 +94,11 @@ async fn main() -> anyhow::Result<()> {
         config.memory_conflict_similarity,
     ));
 
+    let backfilled = memory_svc.backfill_fts(&*pool.get()?)?;
+    if backfilled > 0 {
+        info!("Backfilled {backfilled} memory facts into the keyword index");
+    }
+
     let retrieval = Arc::new(RetrievalService {
         embed: embed.clone(),
         tantivy: tantivy.clone(),

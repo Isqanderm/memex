@@ -260,6 +260,11 @@ impl TantivyStore {
         Ok(())
     }
 
+    /// Number of committed (searchable) documents in the index.
+    pub fn num_docs(&self) -> u64 {
+        self.reader.searcher().num_docs()
+    }
+
     /// Delete the document with the given `chunk_id` (buffered; call [`commit`]).
     pub fn delete_by_chunk_id(&self, chunk_id: &str) -> anyhow::Result<()> {
         let term = Term::from_field_text(self.f_chunk_id, chunk_id);
@@ -307,9 +312,11 @@ impl TantivyStore {
             local_tokenizers,
         );
 
-        let query = query_parser
-            .parse_query(query_text)
-            .map_err(|e| anyhow::anyhow!("Query parse error: {e:?}"))?;
+        // Lenient: URLs, colons and stray operators must not fail the search.
+        let (query, errors) = query_parser.parse_query_lenient(query_text);
+        if !errors.is_empty() {
+            tracing::debug!("Lenient query parse of {query_text:?}: {errors:?}");
+        }
 
         let top_docs = searcher
             .search(&query, &TopDocs::with_limit(top_k).order_by_score())
@@ -414,6 +421,28 @@ mod tests {
         // Now it should be gone.
         let hits = store.search("deleted", "en", 10).expect("search after delete");
         assert!(hits.is_empty(), "Document should be absent after deletion");
+    }
+
+    #[test]
+    fn search_with_url_query_is_lenient() {
+        let (store, _dir) = make_store();
+        store
+            .add_chunk("chunk-url", "doc-url", "en", "The server runs at http://memex:8000 today")
+            .expect("add_chunk");
+        store.commit().expect("commit");
+
+        let hits = store.search("http://memex:8000", "en", 10).expect("lenient search");
+        assert_eq!(hits.first().map(|h| h.chunk_id.as_str()), Some("chunk-url"));
+    }
+
+    #[test]
+    fn num_docs_counts_committed_documents() {
+        let (store, _dir) = make_store();
+        assert_eq!(store.num_docs(), 0);
+        store.add_chunk("c1", "d1", "en", "one").expect("add");
+        store.add_chunk("c2", "d1", "en", "two").expect("add");
+        store.commit().expect("commit");
+        assert_eq!(store.num_docs(), 2);
     }
 
     #[test]

@@ -56,6 +56,9 @@ impl MemorySearch {
         scope: Option<&str>,
         category: Option<&str>,
     ) -> anyhow::Result<Vec<MemoryHit>> {
+        if self.top_k == 0 {
+            return Ok(vec![]);
+        }
         let candidates = self.top_k * 2;
 
         let vec_hits: Vec<SearchHit> = vectors
@@ -226,5 +229,46 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].memory_id, a);
         assert_eq!(hits[0].scope, "a");
+    }
+
+    #[test]
+    fn backfill_indexes_active_facts_once() {
+        let f = setup();
+        let conn = f.pool.get().unwrap();
+        let repo = MemoryRepository::new(&conn);
+        let new = |content| NewMemory {
+            content,
+            source: "explicit",
+            source_id: None,
+            scope: "default",
+            forget_after: None,
+            relation: None,
+            parent_id: None,
+            category: None,
+            project: None,
+        };
+        let id = repo.create(&new("User's MEMEX_URL is http://memex:8000")).unwrap();
+        repo.create(&new("User prefers dark roast coffee")).unwrap();
+
+        let n = crate::memory::service::backfill_memory_fts(&conn, &f.fts).unwrap();
+        assert_eq!(n, 2);
+
+        let hits = MemorySearch::new(0.60, 10)
+            .search(&conn, &VectorStore::new(384), &f.fts, "MEMEX_URL", &[0.0; 384], "en", None, None)
+            .unwrap();
+        assert_eq!(hits.first().map(|h| h.memory_id.as_str()), Some(id.as_str()));
+
+        assert_eq!(crate::memory::service::backfill_memory_fts(&conn, &f.fts).unwrap(), 0);
+    }
+
+    #[test]
+    fn zero_top_k_returns_empty() {
+        let f = setup();
+        let conn = f.pool.get().unwrap();
+        add_fact(&conn, &f.fts, "User's MEMEX_URL is http://memex:8000", "default");
+        let hits = MemorySearch::new(0.60, 0)
+            .search(&conn, &VectorStore::new(384), &f.fts, "MEMEX_URL", &[0.0; 384], "en", None, None)
+            .unwrap();
+        assert!(hits.is_empty());
     }
 }
