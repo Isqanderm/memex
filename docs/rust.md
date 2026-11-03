@@ -246,7 +246,7 @@ LLM_MODEL=llama3.1
 
 ## Evaluating memory quality
 
-`tests/research/memory_eval.py` measures extraction and retrieval quality of a running server on 22 rows (11 Russian, 11 English; 4 conflict rows, 3 exact-token rows: `MEMEX_URL`, a surname, a package version) from `tests/research/fixtures/memory_eval.jsonl`. It calls `remember`, matches extracted facts to the expected ones by token-F1 >= 0.6 (lowercase, no punctuation), runs the row's search queries, and deletes everything in the scope afterwards (`--keep` to skip).
+`tests/research/memory_eval.py` measures extraction and retrieval quality of a running server on 22 rows (11 Russian, 11 English; 4 conflict rows, 5 exact-token rows: an e-mail, two surnames, `MEMEX_URL`, package versions) from `tests/research/fixtures/memory_eval.jsonl`. It calls `remember`, matches extracted facts to the expected ones by token-F1 >= 0.6 (lowercase, whitespace tokens with edge punctuation stripped, so `MEMEX_URL` and `5.2.1` stay single tokens; exact-token rows additionally require the listed tokens verbatim in the fact), runs the row's search queries, and deletes everything in the scope afterwards (`--keep` to skip).
 
 ```bash
 cd rust && cargo build --release && cd ..
@@ -256,9 +256,9 @@ export MODEL_CACHE_DIR=$HOME/.cache/fastembed LLM_BASE_URL=http://127.0.0.1:1143
 uv run python tests/research/memory_eval.py --base-url http://localhost:8000 --scope eval --model-label qwen2.5-7b
 ```
 
-It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3` and `updates detected x/y`, and writes `tests/research/results/<date>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
+It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3`, `hit@k (of matched)` (only queries whose expected fact was extracted), `search precision@3` and `updates detected x/y`, and records its configuration (including `--conflict-sim`/`--retrieval-sim` labels). Unmatched expected facts count as misses in the unconditional `hit@k`. `--self-test` checks the scoring helpers, and writes `tests/research/results/<date>T<HHMMSS>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
 
-Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`):
+Baseline (2026-11-03, measured with the earlier scoring that split exact tokens on punctuation; to be re-measured, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`):
 
 | metric | value |
 |---|---|
@@ -268,7 +268,7 @@ Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`
 | search hit@3 | 0.53 (16/30) |
 | updates detected | 4/4 |
 
-Of the 30 queries, 25 had a matched fact; 9 of those were not found in the top 3 (mostly paraphrase queries such as "where does the user work now" and cross-language ones), and hit@1 is almost equal to hit@3, which suggests results are cut off by the retrieval threshold rather than ranked badly. gpt-4o-mini was not run (no OpenAI key available).
+Of the 30 queries, 25 had a matched fact; 9 of those were not found in the top 3 (mostly paraphrase queries such as "where does the user work now" and cross-language ones) (see the sweep below: the threshold is not the cause, ranking is). gpt-4o-mini was not run (no OpenAI key available).
 
 Retrieval threshold sweep (`--search-only` on the same 44 seeded facts, `MEMORY_CONFLICT_SIMILARITY=0.82`; the matching in this mode is against the whole scope, so the control differs slightly from the table above):
 
