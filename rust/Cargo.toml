@@ -11,10 +11,6 @@ path = "src/lib.rs"
 name = "memex"
 path = "src/main.rs"
 
-[[bin]]
-name = "memex-mcp"
-path = "src/bin/mcp.rs"
-
 [dependencies]
 # HTTP сервер
 axum = { version = "0.7", features = ["macros", "multipart"] }
@@ -89,7 +85,7 @@ async-trait = "0.1"
 # Async stream macros
 async-stream = "0.3"
 
-rmcp = { version = "1.7.0", features = ["server", "transport-io", "macros"] }
+rmcp = { version = "1.7.0", features = ["server", "macros", "transport-streamable-http-server"] }
 schemars = "1.2.1"
 
 [dev-dependencies]

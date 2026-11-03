@@ -6,6 +6,7 @@ mod db;
 mod error;
 mod ingestion;
 mod llm;
+mod mcp;
 mod memory;
 mod search;
 
@@ -149,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
     let app = axum::Router::new()
         .merge(api::router())
         .merge(api::ui::router())
+        .merge(mcp::router::mcp_router(state.clone()))
         .nest_service("/static", ServeDir::new("static"))
         .route("/health", axum::routing::get(|| async { "ok" }))
         .with_state(state);
