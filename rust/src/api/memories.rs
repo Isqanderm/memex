@@ -25,6 +25,16 @@ fn default_scope() -> String {
     "default".to_string()
 }
 
+/// A blank or whitespace-only scope means "no scope given".
+pub(crate) fn normalize_scope(scope: Option<&str>) -> Option<&str> {
+    scope.filter(|s| !s.trim().is_empty())
+}
+
+/// Scope for a write: the given one, or `default` when missing or blank.
+pub(crate) fn scope_or_default(scope: Option<&str>) -> &str {
+    normalize_scope(scope).unwrap_or("default")
+}
+
 fn default_source() -> String {
     "explicit".to_string()
 }
@@ -119,7 +129,7 @@ pub(crate) fn search_memories(
         &q.query,
         &query_vector,
         &lang,
-        q.scope.as_deref(),
+        normalize_scope(q.scope.as_deref()),
         q.category.as_deref(),
     )?;
     let ids: Vec<String> = hits.iter().map(|h| h.memory_id.clone()).collect();
@@ -189,7 +199,7 @@ async fn remember_handler(
     let memory_svc = state.memory_svc.clone();
     let content = body.content.clone();
     let source = body.source.clone();
-    let scope = body.scope.clone();
+    let scope = scope_or_default(Some(&body.scope)).to_string();
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(AppError::Pool)?;
@@ -206,37 +216,45 @@ async fn remember_handler(
     }))
 }
 
-/// Validate and queue a conversation for fact extraction; returns the job id.
+/// Validate and queue a conversation for fact extraction (blank scope → `default`).
+/// Returns the job id and its status: `pending` for a new job, the current status when
+/// an existing job for the same conversation and scope was reused.
 pub(crate) fn enqueue_observe(
     state: &AppState,
     conn: &Connection,
     conversation: &str,
-    scope: &str,
-) -> Result<String, AppError> {
+    scope: Option<&str>,
+) -> Result<(String, String), AppError> {
     if conversation.trim().is_empty() {
         return Err(AppError::BadRequest("conversation must not be blank".to_string()));
     }
-    let (job_id, _created) = state.memory_svc.enqueue_observe(conn, conversation, scope)?;
-    Ok(job_id)
+    let scope = scope_or_default(scope);
+    let (job_id, created) = state.memory_svc.enqueue_observe(conn, conversation, scope)?;
+    let status = if created {
+        "pending".to_string()
+    } else {
+        MemoryJobRepository::new(conn)
+            .get_by_id(&job_id)?
+            .map(|j| j.status)
+            .unwrap_or_else(|| "pending".to_string())
+    };
+    Ok((job_id, status))
 }
 
 async fn observe_handler(
     State(state): State<AppState>,
     Json(body): Json<ObserveRequest>,
 ) -> Result<(StatusCode, Json<ObserveResponse>), AppError> {
-    let job_id = tokio::task::spawn_blocking(move || {
+    let (job_id, status) = tokio::task::spawn_blocking(move || {
         let conn = state.pool.get().map_err(AppError::Pool)?;
-        enqueue_observe(&state, &conn, &body.conversation, &body.scope)
+        enqueue_observe(&state, &conn, &body.conversation, Some(&body.scope))
     })
     .await
     .map_err(|e| AppError::Internal(format!("task join error: {e}")))??;
 
     Ok((
         StatusCode::ACCEPTED,
-        Json(ObserveResponse {
-            job_id,
-            status: "pending".to_string(),
-        }),
+        Json(ObserveResponse { job_id, status }),
     ))
 }
 
@@ -301,7 +319,9 @@ async fn list_memories_handler(
     let memories = tokio::task::spawn_blocking(move || -> Result<Vec<Memory>, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
         let repo = MemoryRepository::new(&conn);
-        let all = repo.get_all_active(scope.as_deref()).map_err(AppError::Db)?;
+        let all = repo
+            .get_all_active(normalize_scope(scope.as_deref()))
+            .map_err(AppError::Db)?;
 
         // Filter by category if provided
         if let Some(cat) = &category {
@@ -346,7 +366,7 @@ async fn context_handler(
     let profile = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
         tokio::runtime::Handle::current()
-            .block_on(profile_svc.get_or_build(&conn, scope.as_deref()))
+            .block_on(profile_svc.get_or_build(&conn, normalize_scope(scope.as_deref())))
             .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
@@ -385,7 +405,18 @@ async fn forget_handler(
 
 #[cfg(test)]
 mod tests {
-    use super::clamp_top_k;
+    use super::{clamp_top_k, normalize_scope, scope_or_default};
+
+    #[test]
+    fn blank_scope_is_no_scope() {
+        assert_eq!(normalize_scope(None), None);
+        assert_eq!(normalize_scope(Some("")), None);
+        assert_eq!(normalize_scope(Some("  \t")), None);
+        assert_eq!(normalize_scope(Some("work")), Some("work"));
+        assert_eq!(scope_or_default(Some(" ")), "default");
+        assert_eq!(scope_or_default(None), "default");
+        assert_eq!(scope_or_default(Some("work")), "work");
+    }
 
     #[test]
     fn top_k_is_clamped() {

@@ -1,4 +1,6 @@
 # tests/golden/test_memory.py
+import uuid
+
 import httpx
 import pytest
 
@@ -112,7 +114,8 @@ class TestMemoryContract:
         assert resp.status_code in (400, 404, 422)
 
     def test_observe_is_async(self, client: httpx.Client) -> None:
-        resp = client.post("/api/memory/observe", json={"conversation": "User: I moved to Novi Sad."})
+        conversation = f"User: I moved to Novi Sad. ({uuid.uuid4()})"
+        resp = client.post("/api/memory/observe", json={"conversation": conversation})
         assert resp.status_code == 202
         data = resp.json()
         assert data["status"] == "pending" and data["job_id"]
@@ -123,8 +126,11 @@ class TestMemoryContract:
     def test_observe_same_text_twice_returns_same_job(self, client: httpx.Client) -> None:
         body = {"conversation": "User: I prefer tabs over spaces."}
         a = client.post("/api/memory/observe", json=body).json()["job_id"]
-        b = client.post("/api/memory/observe", json=body).json()["job_id"]
-        assert a == b
+        second = client.post("/api/memory/observe", json=body)
+        assert second.status_code == 202
+        assert second.json()["job_id"] == a
+        # A reused job reports its real status.
+        assert second.json()["status"] in ("pending", "processing", "done")
 
     def test_observe_blank_conversation_is_400(self, client: httpx.Client) -> None:
         resp = client.post("/api/memory/observe", json={"conversation": "   "})

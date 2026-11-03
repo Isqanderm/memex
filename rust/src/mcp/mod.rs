@@ -16,7 +16,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{delete_document_by_id, enqueue_upload};
-use crate::api::memories::{enqueue_observe, search_error, search_memories, SearchRequest};
+use crate::api::memories::{
+    enqueue_observe, normalize_scope, scope_or_default, search_error, search_memories,
+    SearchRequest,
+};
 use crate::api::query::search_chunks;
 use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
@@ -173,7 +176,7 @@ impl MemexMcp {
     ) -> Result<CallToolResult, ErrorData> {
         let memory_svc = self.state.memory_svc.clone();
         let source = p.source.unwrap_or_else(|| "explicit".to_string());
-        let scope = p.scope.unwrap_or_else(|| "default".to_string());
+        let scope = scope_or_default(p.scope.as_deref()).to_string();
         let r = self
             .with_conn(move |conn| {
                 tokio::runtime::Handle::current()
@@ -290,16 +293,23 @@ impl MemexMcp {
         Parameters(p): Parameters<ObserveParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let state = self.state.clone();
-        let scope = p.scope.unwrap_or_else(|| "default".to_string());
-        let job_id = match self
-            .with_conn(move |conn| enqueue_observe(&state, conn, &p.conversation, &scope))
+        let (job_id, status) = match self
+            .with_conn(move |conn| {
+                enqueue_observe(&state, conn, &p.conversation, p.scope.as_deref())
+            })
             .await
         {
-            Ok(id) => id,
+            Ok(r) => r,
             Err(AppError::BadRequest(m)) => return domain_error(m),
             Err(e) => return Err(internal(e)),
         };
-        ok_text(format!("Queued. job_id: {job_id}. Check with check_memory_job."))
+        if status == "pending" {
+            ok_text(format!("Queued. job_id: {job_id}. Check with check_memory_job."))
+        } else {
+            ok_text(format!(
+                "Already queued (status: {status}). job_id: {job_id}. Check with check_memory_job."
+            ))
+        }
     }
 
     #[tool(description = "Check a fact-extraction job queued by observe. Returns pending/processing/done (with the number of facts)/error.")]
@@ -337,7 +347,7 @@ impl MemexMcp {
         let all = self
             .with_conn(move |conn| {
                 MemoryRepository::new(conn)
-                    .get_all_active(scope.as_deref())
+                    .get_all_active(normalize_scope(scope.as_deref()))
                     .map_err(AppError::Db)
             })
             .await
