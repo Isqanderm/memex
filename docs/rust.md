@@ -177,8 +177,8 @@ SEMANTIC_TOP_K=20
 BM25_TOP_K=20
 RRF_K=60
 RERANKER_TOP_N=5
-MEMORY_CONFLICT_SIMILARITY=0.82   # cosine similarity; calibrate with scripts/memory_eval.py
-MEMORY_RETRIEVAL_SIMILARITY=0.60  # cosine similarity; calibrate with scripts/memory_eval.py
+MEMORY_CONFLICT_SIMILARITY=0.82   # cosine similarity; calibrate with tests/research/memory_eval.py
+MEMORY_RETRIEVAL_SIMILARITY=0.60  # cosine similarity; calibrate with tests/research/memory_eval.py
 L2_CHUNK_SIZE=512
 L1_CHUNK_SIZE=128
 L2_CHUNK_OVERLAP=64
@@ -241,6 +241,39 @@ LLM_MODEL=llama3.1
 - `MODEL_CACHE_DIR` - where ONNX models are stored. Default `data/models` for bare-binary runs; the Docker image bakes models into `/app/models` (set explicitly by `docker-compose.rust.yml`).
 - `RERANKER_MODEL` - `jina-reranker-v2-base-multilingual` (default), `bge-reranker-base`, or `bge-reranker-v2-m3` (~2.3 GB).
 - `memex --download-models` downloads both ONNX models (embedding and reranker) into `MODEL_CACHE_DIR` and exits. Use it to pre-warm offline hosts or build images.
+
+---
+
+## Evaluating memory quality
+
+`tests/research/memory_eval.py` measures extraction and retrieval quality of a running server on 22 rows (11 Russian, 11 English; 4 conflict rows, 3 exact-token rows: `MEMEX_URL`, a surname, a package version) from `tests/research/fixtures/memory_eval.jsonl`. It calls `remember`, matches extracted facts to the expected ones by token-F1 >= 0.6 (lowercase, no punctuation), runs the row's search queries, and deletes everything in the scope afterwards (`--keep` to skip).
+
+```bash
+cd rust && cargo build --release && cd ..
+set -a && source rust/.env.example && set +a
+export MODEL_CACHE_DIR=$HOME/.cache/fastembed LLM_BASE_URL=http://127.0.0.1:11434/v1 LLM_MODEL=qwen2.5:7b
+(cd rust && ./target/release/memex &)          # use a fresh rust/data
+uv run python tests/research/memory_eval.py --base-url http://localhost:8000 --scope eval --model-label qwen2.5-7b
+```
+
+It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3` and `updates detected x/y`, and writes `tests/research/results/<date>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
+
+Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`):
+
+| metric | value |
+|---|---|
+| facts precision | 0.67 |
+| facts recall | 0.84 |
+| search hit@1 | 0.50 (15/30) |
+| search hit@3 | 0.53 (16/30) |
+| updates detected | 4/4 |
+
+Of the 30 queries, 25 had a matched fact; 9 of those were not found in the top 3 (mostly paraphrase queries such as "where does the user work now" and cross-language ones), and hit@1 is almost equal to hit@3, which suggests results are cut off by the retrieval threshold rather than ranked badly. gpt-4o-mini was not run (no OpenAI key available).
+
+Calibrating the thresholds: change one variable at a time, restart the server on a fresh `rust/data`, re-run, and compare with the table above.
+
+- `MEMORY_CONFLICT_SIMILARITY` (when a new fact is compared with existing ones for `updates`/`extends`): if `facts precision` drops or good facts get merged, the threshold is too low; if `updates detected` drops, it is too high.
+- `MEMORY_RETRIEVAL_SIMILARITY` (minimum cosine similarity for search hits): if `hit@3` drops, the threshold is too high (try 0.5); if unrelated memories show up in results, it is too low.
 
 ---
 
