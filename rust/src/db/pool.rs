@@ -28,10 +28,10 @@ fn register_sqlite_vec() {
 fn init_connection(conn: &mut Connection) -> rusqlite::Result<()> {
     // WAL + foreign keys
     conn.execute_batch(
-        "PRAGMA journal_mode=WAL;
+        "PRAGMA busy_timeout=5000;
+         PRAGMA journal_mode=WAL;
          PRAGMA foreign_keys=ON;
-         PRAGMA synchronous=NORMAL;
-         PRAGMA busy_timeout=5000;",
+         PRAGMA synchronous=NORMAL;",
     )?;
 
     // Apply schema (idempotent via IF NOT EXISTS)

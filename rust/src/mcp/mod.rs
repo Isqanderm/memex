@@ -339,9 +339,20 @@ impl MemexMcp {
         let upload_dir = self.state.config.upload_dir.clone();
         // `enqueue_upload` sanitizes the name (path separators, length).
         let filename = format!("{}.md", p.title);
+        // The document title comes from the first H1, so add one when missing.
+        let has_h1 = p
+            .content
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .is_some_and(|l| l.starts_with("# "));
+        let content = if has_h1 {
+            p.content
+        } else {
+            format!("# {}\n\n{}", p.title.trim(), p.content)
+        };
         let resp = self
             .with_conn(move |conn| {
-                enqueue_upload(conn, &upload_dir, &filename, p.content.as_bytes())
+                enqueue_upload(conn, &upload_dir, &filename, content.as_bytes())
             })
             .await
             .map_err(internal)?;

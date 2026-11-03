@@ -65,6 +65,10 @@ impl Config {
                 .map_err(|e| format!("{key}: {e}"))
         };
 
+        let get_nb = |key: &str, default: &str| -> String {
+            Self::non_blank(std::env::var(key).ok()).unwrap_or_else(|| default.to_string())
+        };
+
         let llm_provider = get("LLM_PROVIDER")?.parse::<LlmProviderKind>()?;
 
         let cfg = Config {
@@ -79,13 +83,10 @@ impl Config {
             llm_temperature: get_or("LLM_TEMPERATURE", "0.1").parse().map_err(|e| format!("LLM_TEMPERATURE: {e}"))?,
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
             openai_llm_api_key: std::env::var("OPENAI_LLM_API_KEY").ok(),
-            llm_base_url: std::env::var("LLM_BASE_URL").ok().filter(|s| !s.is_empty()),
-            reranker_model: get_or("RERANKER_MODEL", "jina-reranker-v2-base-multilingual"),
-            model_cache_dir: get_or("MODEL_CACHE_DIR", "data/models"),
-            mcp_allowed_hosts: Self::parse_allowed_hosts(&get_or(
-                "MCP_ALLOWED_HOSTS",
-                "localhost,127.0.0.1,::1,memex",
-            )),
+            llm_base_url: Self::non_blank(std::env::var("LLM_BASE_URL").ok()),
+            reranker_model: get_nb("RERANKER_MODEL", "jina-reranker-v2-base-multilingual"),
+            model_cache_dir: get_nb("MODEL_CACHE_DIR", "data/models"),
+            mcp_allowed_hosts: Self::parse_allowed_hosts(&get_or("MCP_ALLOWED_HOSTS", "")),
             l2_chunk_size: get_parse("L2_CHUNK_SIZE", "512")?,
             l1_chunk_size: get_parse("L1_CHUNK_SIZE", "128")?,
             l2_chunk_overlap: get_parse("L2_CHUNK_OVERLAP", "64")?,
@@ -115,12 +116,24 @@ impl Config {
         }
     }
 
+    /// Trims the value; blank or whitespace-only counts as unset.
+    pub fn non_blank(v: Option<String>) -> Option<String> {
+        v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
+    /// Splits a comma-separated host list; empty input yields the defaults.
     pub fn parse_allowed_hosts(raw: &str) -> Vec<String> {
-        raw.split(',')
+        let hosts: Vec<String> = raw
+            .split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(String::from)
-            .collect()
+            .collect();
+        if hosts.is_empty() {
+            ["localhost", "127.0.0.1", "::1", "memex"].map(String::from).to_vec()
+        } else {
+            hosts
+        }
     }
 
     #[cfg(test)]
@@ -204,6 +217,20 @@ mod tests {
             Config::parse_allowed_hosts(" localhost, memex ,memex:8000 "),
             vec!["localhost", "memex", "memex:8000"]
         );
+    }
+
+    #[test]
+    fn blank_allowed_hosts_fall_back_to_defaults() {
+        let d = vec!["localhost", "127.0.0.1", "::1", "memex"];
+        assert_eq!(Config::parse_allowed_hosts(""), d);
+        assert_eq!(Config::parse_allowed_hosts("  , "), d);
+    }
+
+    #[test]
+    fn non_blank_treats_whitespace_as_unset() {
+        assert_eq!(Config::non_blank(None), None);
+        assert_eq!(Config::non_blank(Some("   ".into())), None);
+        assert_eq!(Config::non_blank(Some(" http://x/v1 ".into())).as_deref(), Some("http://x/v1"));
     }
 
     #[test]

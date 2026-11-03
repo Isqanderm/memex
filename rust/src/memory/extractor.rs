@@ -128,7 +128,7 @@ pub fn parse_facts_json(raw: &str) -> anyhow::Result<Vec<ExtractedFact>> {
 
     let facts_arr = match value.get("facts").and_then(|v| v.as_array()) {
         Some(arr) => arr,
-        None => return Ok(vec![]),
+        None => anyhow::bail!("LLM response has no \"facts\" array"),
     };
 
     let mut facts = Vec::new();
@@ -176,7 +176,7 @@ pub fn parse_relations_json(raw: &str) -> anyhow::Result<Vec<RelationResult>> {
 
     let relations_arr = match value.get("relations").and_then(|v| v.as_array()) {
         Some(arr) => arr,
-        None => return Ok(vec![]),
+        None => anyhow::bail!("LLM response has no \"relations\" array"),
     };
 
     let mut relations = Vec::new();
@@ -270,6 +270,31 @@ mod tests {
         assert_eq!(facts.len(), 2);
         assert_eq!(facts[0].category.as_deref(), Some("preference"));
         assert!(facts[1].forget_after.is_some());
+    }
+
+    #[test]
+    fn parse_facts_errors_on_missing_or_non_array_key() {
+        assert!(parse_facts_json(r#"{"fact": [{"content": "x"}]}"#).is_err());
+        assert!(parse_facts_json(r#"{"facts": "x"}"#).is_err());
+        assert!(parse_facts_json(r#"{"facts": []}"#).unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_relations_errors_on_missing_or_non_array_key() {
+        assert!(parse_relations_json(r#"{"relation": []}"#).is_err());
+        assert!(parse_relations_json(r#"{"relations": 3}"#).is_err());
+        assert!(parse_relations_json(r#"{"relations": []}"#).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn extract_retries_on_missing_facts_key() {
+        let llm = Arc::new(ScriptedLlm {
+            answers: Mutex::new(vec![r#"{"fact":[]}"#, r#"{"facts":[{"content":"A"}]}"#]),
+            calls: AtomicUsize::new(0),
+        });
+        let facts = FactExtractor::new(llm.clone()).extract_facts("x").await.unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
     }
 
     #[test]
