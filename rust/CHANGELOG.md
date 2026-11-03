@@ -20,7 +20,7 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ### Changed
 
-- `observe` is asynchronous: the conversation is stored and queued in `memory_extraction_jobs`, a background worker extracts the facts. `POST /api/memory/observe` returns `202 Accepted` with `{"job_id", "status": "pending"}`; the MCP tool returns `Queued. job_id: <id>. Check with check_memory_job.` The same conversation sent twice maps to the same job. `remember` stays synchronous.
+- `observe` is asynchronous: the conversation is stored and queued in `memory_extraction_jobs`, a background worker extracts the facts. `POST /api/memory/observe` returns `202 Accepted` with `{"job_id", "status": "pending"}`; the MCP tool returns `Queued. job_id: <id>. Check with check_memory_job.` The same conversation sent twice in the same scope maps to the same job; blank conversations are rejected with 400. `remember` stays synchronous.
 - `recall` searches memory facts without calling the LLM
 
 ---

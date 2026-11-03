@@ -86,19 +86,34 @@ impl<'a> MemoryJobRepository<'a> {
             .optional()
     }
 
-    /// The newest job for a source in any status, if any.
-    pub fn get_latest_by_source_ref(&self, source_ref: &str) -> rusqlite::Result<Option<MemoryJob>> {
+    /// The newest job for a source in a scope, in any status, if any.
+    pub fn get_latest_by_source_ref_and_scope(
+        &self,
+        source_ref: &str,
+        scope: &str,
+    ) -> rusqlite::Result<Option<MemoryJob>> {
         self.conn
             .query_row(
                 &format!(
                     "SELECT {COLUMNS} FROM memory_extraction_jobs
-                     WHERE source_ref = ?1
+                     WHERE source_ref = ?1 AND scope = ?2
                      ORDER BY created_at DESC, rowid DESC LIMIT 1"
                 ),
-                params![source_ref],
+                params![source_ref, scope],
                 Self::row_to_job,
             )
             .optional()
+    }
+
+    /// Return every `processing` job to `pending`; called once at worker start, when no
+    /// job can legitimately be in flight. Returns the number of jobs reset.
+    pub fn reset_stale_processing(&self) -> rusqlite::Result<usize> {
+        self.conn.execute(
+            "UPDATE memory_extraction_jobs
+             SET status = 'pending', updated_at = datetime('now')
+             WHERE status = 'processing'",
+            [],
+        )
     }
 
     pub fn mark_done(&self, id: &str, facts_extracted: usize) -> rusqlite::Result<bool> {
@@ -161,8 +176,10 @@ mod tests {
         assert_eq!(job.status, "done");
         assert_eq!(job.facts_extracted, 3);
         assert!(repo.get_active_by_source_ref("src-1").unwrap().is_none());
-        assert_eq!(repo.get_latest_by_source_ref("src-1").unwrap().unwrap().id, id);
-        assert!(repo.get_latest_by_source_ref("other").unwrap().is_none());
+        let latest = repo.get_latest_by_source_ref_and_scope("src-1", "work").unwrap();
+        assert_eq!(latest.unwrap().id, id);
+        assert!(repo.get_latest_by_source_ref_and_scope("src-1", "default").unwrap().is_none());
+        assert!(repo.get_latest_by_source_ref_and_scope("other", "work").unwrap().is_none());
     }
 
     #[test]
@@ -175,5 +192,24 @@ mod tests {
         let job = repo.get_by_id(&id).unwrap().unwrap();
         assert_eq!(job.status, "error");
         assert_eq!(job.error.as_deref(), Some("boom"));
+    }
+
+    #[test]
+    fn reset_stale_processing_returns_jobs_to_pending() {
+        let pool = build_pool(":memory:").unwrap();
+        let conn = pool.get().unwrap();
+        let repo = MemoryJobRepository::new(&conn);
+        let a = repo.create("src-a", "conversation", "default").unwrap();
+        let b = repo.create("src-b", "conversation", "default").unwrap();
+        let done = repo.create("src-c", "conversation", "default").unwrap();
+        repo.claim_next().unwrap();
+        repo.claim_next().unwrap();
+        repo.mark_done(&done, 0).unwrap();
+
+        assert_eq!(repo.reset_stale_processing().unwrap(), 2);
+        assert_eq!(repo.get_by_id(&a).unwrap().unwrap().status, "pending");
+        assert_eq!(repo.get_by_id(&b).unwrap().unwrap().status, "pending");
+        assert_eq!(repo.get_by_id(&done).unwrap().unwrap().status, "done");
+        assert_eq!(repo.reset_stale_processing().unwrap(), 0);
     }
 }

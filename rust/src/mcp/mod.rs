@@ -16,7 +16,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{delete_document_by_id, enqueue_upload};
-use crate::api::memories::{search_error, search_memories, SearchRequest};
+use crate::api::memories::{enqueue_observe, search_error, search_memories, SearchRequest};
 use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
@@ -279,16 +279,16 @@ impl MemexMcp {
         &self,
         Parameters(p): Parameters<ObserveParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let memory_svc = self.state.memory_svc.clone();
+        let state = self.state.clone();
         let scope = p.scope.unwrap_or_else(|| "default".to_string());
-        let (job_id, _created) = self
-            .with_conn(move |conn| {
-                memory_svc
-                    .enqueue_observe(conn, &p.conversation, &scope)
-                    .map_err(|e| AppError::Llm(e.to_string()))
-            })
+        let job_id = match self
+            .with_conn(move |conn| enqueue_observe(&state, conn, &p.conversation, &scope))
             .await
-            .map_err(internal)?;
+        {
+            Ok(id) => id,
+            Err(AppError::BadRequest(m)) => return domain_error(m),
+            Err(e) => return Err(internal(e)),
+        };
         ok_text(format!("Queued. job_id: {job_id}. Check with check_memory_job."))
     }
 

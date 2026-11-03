@@ -214,7 +214,7 @@ Request body limit is 16 MiB. Requests carrying a browser `Origin` header are re
 
 `remember`, `observe`, `recall` and `memories` take an optional `scope`: writes default to `default`, reads without `scope` cover all scopes. Separate projects or agents can keep their facts apart this way. Over HTTP, `GET /api/memory/context?scope=` builds the profile for one scope.
 
-`observe` does not wait for the LLM. It stores the conversation and returns a job id; a background worker extracts the facts. Over HTTP, `POST /api/memory/observe` answers `202 Accepted` with `{"job_id": "...", "status": "pending"}`, and `GET /api/memory/jobs/{job_id}` returns `{job_id, status, facts_extracted, error}`. Sending the same conversation again returns the same job instead of extracting it twice (a job that ended in `error` is retried with a new job). `remember` stays synchronous.
+`observe` does not wait for the LLM. It stores the conversation and returns a job id; a background worker extracts the facts. Over HTTP, `POST /api/memory/observe` answers `202 Accepted` with `{"job_id": "...", "status": "pending"}`, and `GET /api/memory/jobs/{job_id}` returns `{job_id, status, facts_extracted, error}`. Sending the same conversation again in the same scope returns the same job instead of extracting it twice (a job that ended in `error` is retried with a new job; another scope gets its own job). A blank conversation is rejected with 400. Jobs interrupted by a restart are queued again when the server starts. `remember` stays synchronous.
 
 ### Deploying inside mcp-registry
 

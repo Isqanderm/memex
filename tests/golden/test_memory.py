@@ -125,3 +125,7 @@ class TestMemoryContract:
         a = client.post("/api/memory/observe", json=body).json()["job_id"]
         b = client.post("/api/memory/observe", json=body).json()["job_id"]
         assert a == b
+
+    def test_observe_blank_conversation_is_400(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/observe", json={"conversation": "   "})
+        assert resp.status_code == 400

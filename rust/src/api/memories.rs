@@ -205,20 +205,30 @@ async fn remember_handler(
     }))
 }
 
+/// Validate and queue a conversation for fact extraction; returns the job id.
+pub(crate) fn enqueue_observe(
+    state: &AppState,
+    conn: &Connection,
+    conversation: &str,
+    scope: &str,
+) -> Result<String, AppError> {
+    if conversation.trim().is_empty() {
+        return Err(AppError::BadRequest("conversation must not be blank".to_string()));
+    }
+    let (job_id, _created) = state.memory_svc.enqueue_observe(conn, conversation, scope)?;
+    Ok(job_id)
+}
+
 async fn observe_handler(
     State(state): State<AppState>,
     Json(body): Json<ObserveRequest>,
 ) -> Result<(StatusCode, Json<ObserveResponse>), AppError> {
     let job_id = tokio::task::spawn_blocking(move || {
         let conn = state.pool.get().map_err(AppError::Pool)?;
-        state
-            .memory_svc
-            .enqueue_observe(&conn, &body.conversation, &body.scope)
-            .map(|(id, _created)| id)
-            .map_err(|e| AppError::Llm(e.to_string()))
+        enqueue_observe(&state, &conn, &body.conversation, &body.scope)
     })
     .await
-    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+    .map_err(|e| AppError::Internal(format!("task join error: {e}")))??;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -239,7 +249,7 @@ async fn memory_job_handler(
         MemoryJobRepository::new(&conn).get_by_id(&id).map_err(AppError::Db)
     })
     .await
-    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??
+    .map_err(|e| AppError::Internal(format!("task join error: {e}")))??
     .ok_or_else(|| AppError::NotFound(format!("memory job {job_id}")))?;
 
     Ok(Json(MemoryJobResponse {

@@ -16,7 +16,15 @@ pub struct MemoryExtractionWorker {
 
 impl MemoryExtractionWorker {
     /// Run the worker loop until a shutdown signal is received; polls every 500 ms.
+    ///
+    /// Jobs left in `processing` by a previous run (restart mid-extraction) are first
+    /// returned to `pending`; this is safe because there is a single extraction worker.
     pub async fn run(&self, mut shutdown: tokio::sync::watch::Receiver<bool>) {
+        match self.reset_stale().await {
+            Ok(0) => {}
+            Ok(n) => info!("MemoryExtractionWorker: re-queued {n} interrupted job(s)."),
+            Err(e) => error!("MemoryExtractionWorker: failed to re-queue interrupted jobs: {e:#}"),
+        }
         loop {
             tokio::select! {
                 _ = shutdown.changed() => {
@@ -34,45 +42,83 @@ impl MemoryExtractionWorker {
         }
     }
 
+    async fn reset_stale(&self) -> anyhow::Result<usize> {
+        let pool = Arc::clone(&self.pool);
+        tokio::task::spawn_blocking(move || -> anyhow::Result<usize> {
+            let conn = pool.get()?;
+            Ok(MemoryJobRepository::new(&conn).reset_stale_processing()?)
+        })
+        .await?
+    }
+
     /// Claim and process one pending extraction job.
     ///
     /// Returns `Ok(true)` if a job was processed, `Ok(false)` if there was nothing to do.
+    /// A claimed job always gets a final status write attempt: extraction errors and
+    /// panics become `error`, and a failed `mark_done` falls back to `mark_error`.
     pub(crate) async fn process_one(&self) -> anyhow::Result<bool> {
         let pool = Arc::clone(&self.pool);
-        let svc = Arc::clone(&self.svc);
-
-        tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
-            let conn = pool.get().map_err(|e| anyhow::anyhow!("DB pool error: {e}"))?;
-            let jobs = MemoryJobRepository::new(&conn);
-            let Some(job) = jobs.claim_next()? else {
-                return Ok(false);
-            };
-            info!("MemoryExtractionWorker: processing job {} source_ref={}", job.id, job.source_ref);
-
-            let result = tokio::runtime::Handle::current().block_on(svc.remember_from_source(
-                &conn,
-                &job.source_ref,
-                &job.source,
-                &job.scope,
-            ));
-            match result {
-                Ok(r) => {
-                    jobs.mark_done(&job.id, r.facts_extracted)?;
-                    info!(
-                        "MemoryExtractionWorker: job {} done, facts_extracted={}",
-                        job.id, r.facts_extracted
-                    );
-                }
-                Err(e) => {
-                    let msg = format!("{e:#}");
-                    error!("MemoryExtractionWorker: job {} failed: {msg}", job.id);
-                    jobs.mark_error(&job.id, &msg)?;
-                }
-            }
-            Ok(true)
+        let job = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let conn = pool.get()?;
+            Ok(MemoryJobRepository::new(&conn).claim_next()?)
         })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking panicked: {e}"))?
+        .await??;
+        let Some(job) = job else {
+            return Ok(false);
+        };
+        info!("MemoryExtractionWorker: processing job {} source_ref={}", job.id, job.source_ref);
+
+        let pool = Arc::clone(&self.pool);
+        let svc = Arc::clone(&self.svc);
+        let (source_ref, source, scope) = (job.source_ref, job.source, job.scope);
+        let extracted = tokio::task::spawn_blocking(move || -> anyhow::Result<usize> {
+            let conn = pool.get()?;
+            let r = tokio::runtime::Handle::current()
+                .block_on(svc.remember_from_source(&conn, &source_ref, &source, &scope))?;
+            Ok(r.facts_extracted)
+        })
+        .await;
+        let outcome = match extracted {
+            Ok(Ok(n)) => Ok(n),
+            Ok(Err(e)) => Err(format!("{e:#}")),
+            Err(e) => Err(format!("extraction panicked: {e}")),
+        };
+
+        let pool = Arc::clone(&self.pool);
+        let job_id = job.id;
+        tokio::task::spawn_blocking(move || finish(&pool, &job_id, outcome)).await?;
+        Ok(true)
+    }
+}
+
+/// Write the final status of a claimed job; failures are logged, never propagated.
+fn finish(pool: &DbPool, job_id: &str, outcome: Result<usize, String>) {
+    let conn = match pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            error!("MemoryExtractionWorker: job {job_id}: no DB connection for the status write: {e}");
+            return;
+        }
+    };
+    let jobs = MemoryJobRepository::new(&conn);
+    let msg = match outcome {
+        Ok(n) => match jobs.mark_done(job_id, n) {
+            Ok(_) => {
+                info!("MemoryExtractionWorker: job {job_id} done, facts_extracted={n}");
+                return;
+            }
+            Err(e) => {
+                error!("MemoryExtractionWorker: job {job_id}: mark_done failed: {e}");
+                format!("mark_done failed: {e}")
+            }
+        },
+        Err(msg) => {
+            error!("MemoryExtractionWorker: job {job_id} failed: {msg}");
+            msg
+        }
+    };
+    if let Err(e) = jobs.mark_error(job_id, &msg) {
+        error!("MemoryExtractionWorker: job {job_id}: mark_error failed: {e}");
     }
 }
 

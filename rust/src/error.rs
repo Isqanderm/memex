@@ -32,6 +32,9 @@ pub enum AppError {
 
     #[error("document parsing error: {0}")]
     Parse(String),
+
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 impl IntoResponse for AppError {

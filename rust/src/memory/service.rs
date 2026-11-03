@@ -132,18 +132,18 @@ impl MemorySvc {
     /// Queue fact extraction for a conversation; returns `(job_id, created)`.
     ///
     /// The raw conversation is stored as a `memory_sources` row (deduplicated by checksum).
-    /// When that source already has a job that did not fail, its id is returned with
-    /// `created = false`; a failed job is retried with a new job.
+    /// When that source already has a job in the same scope that did not fail, its id is
+    /// returned with `created = false`; a failed job is retried with a new job.
     pub fn enqueue_observe(
         &self,
         conn: &Connection,
         conversation: &str,
         scope: &str,
-    ) -> anyhow::Result<(String, bool)> {
+    ) -> rusqlite::Result<(String, bool)> {
         let (source_id, _) =
             MemorySourceRepository::new(conn).get_or_create("conversation", conversation)?;
         let jobs = MemoryJobRepository::new(conn);
-        if let Some(job) = jobs.get_latest_by_source_ref(&source_id)? {
+        if let Some(job) = jobs.get_latest_by_source_ref_and_scope(&source_id, scope)? {
             if job.status != "error" {
                 return Ok((job.id, false));
             }
