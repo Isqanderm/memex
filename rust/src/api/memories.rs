@@ -2,10 +2,13 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::db::repositories::memories::{Memory, MemoryRepository};
+use crate::db::repositories::memory_jobs::MemoryJobRepository;
 use crate::error::AppError;
+use crate::search::memory_search::{MemoryHit, MemorySearch};
 
 use super::state::AppState;
 
@@ -14,6 +17,22 @@ pub struct RememberRequest {
     pub content: String,
     #[serde(default = "default_source")]
     pub source: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
+}
+
+fn default_scope() -> String {
+    "default".to_string()
+}
+
+/// A blank or whitespace-only scope means "no scope given".
+pub(crate) fn normalize_scope(scope: Option<&str>) -> Option<&str> {
+    scope.filter(|s| !s.trim().is_empty())
+}
+
+/// Scope for a write: the given one, or `default` when missing or blank.
+pub(crate) fn scope_or_default(scope: Option<&str>) -> &str {
+    normalize_scope(scope).unwrap_or("default")
 }
 
 fn default_source() -> String {
@@ -23,17 +42,120 @@ fn default_source() -> String {
 #[derive(Deserialize)]
 pub struct ObserveRequest {
     pub conversation: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
 }
 
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub category: Option<String>,
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ContextQuery {
+    pub scope: Option<String>,
+}
+
+/// Body of `POST /api/memory/search` (also the parameters of the MCP `recall` tool).
+#[derive(Deserialize)]
+pub struct SearchRequest {
+    pub query: String,
+    pub scope: Option<String>,
+    pub category: Option<String>,
+    #[serde(default = "default_top_k")]
+    pub top_k: usize,
+}
+
+fn default_top_k() -> usize {
+    10
+}
+
+#[derive(Serialize)]
+pub struct SearchHitItem {
+    pub id: String,
+    pub content: String,
+    pub score: f32,
+    pub scope: String,
+    pub category: Option<String>,
+    pub project: Option<String>,
+    pub source: String,
+    pub created_at: String,
+    pub access_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct SearchResponse {
+    pub hits: Vec<SearchHitItem>,
+}
+
+/// Upper bound on `top_k` for a single request.
+const MAX_TOP_K: usize = 100;
+
+pub(crate) fn clamp_top_k(n: usize) -> usize {
+    n.clamp(1, MAX_TOP_K)
+}
+
+/// Map an error from [`search_memories`] to an [`AppError`], keeping bad-request errors.
+pub(crate) fn search_error(e: anyhow::Error) -> AppError {
+    match e.downcast::<AppError>() {
+        Ok(AppError::BadRequest(m)) => AppError::BadRequest(m),
+        Ok(other) => AppError::Llm(other.to_string()),
+        Err(e) => AppError::Llm(e.to_string()),
+    }
+}
+
+/// Hybrid memory search without an LLM; records the access of every returned fact.
+pub(crate) fn search_memories(
+    state: &AppState,
+    conn: &Connection,
+    q: &SearchRequest,
+) -> anyhow::Result<Vec<MemoryHit>> {
+    if q.query.trim().is_empty() {
+        return Err(AppError::BadRequest("query must not be blank".to_string()).into());
+    }
+    let retrieval = &state.retrieval;
+    let query_vector = state.embed.embed_query(&q.query)?;
+    let lang = retrieval.lang.detect(&q.query);
+    let search = MemorySearch {
+        top_k: clamp_top_k(q.top_k),
+        ..retrieval.memory_search.clone()
+    };
+    let hits = search.search(
+        conn,
+        &state.vectors,
+        &state.memory_fts,
+        retrieval.memory_reranker(),
+        &q.query,
+        &query_vector,
+        &lang,
+        normalize_scope(q.scope.as_deref()),
+        q.category.as_deref(),
+    )?;
+    let ids: Vec<String> = hits.iter().map(|h| h.memory_id.clone()).collect();
+    MemoryRepository::new(conn).touch_accessed(&ids)?;
+    Ok(hits)
 }
 
 #[derive(Serialize)]
 pub struct RememberResponse {
     pub facts_extracted: usize,
     pub memories_updated: usize,
+}
+
+/// Body of the `202 Accepted` answer to `POST /api/memory/observe`.
+#[derive(Serialize)]
+pub struct ObserveResponse {
+    pub job_id: String,
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct MemoryJobResponse {
+    pub job_id: String,
+    pub status: String,
+    pub facts_extracted: i64,
+    pub error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -45,6 +167,8 @@ pub struct MemoryItem {
     pub project: Option<String>,
     pub relation: Option<String>,
     pub created_at: String,
+    pub scope: String,
+    pub access_count: i64,
 }
 
 #[derive(Serialize)]
@@ -60,6 +184,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/memory/remember", post(remember_handler))
         .route("/api/memory/observe", post(observe_handler))
+        .route("/api/memory/jobs/:id", get(memory_job_handler))
+        .route("/api/memory/search", post(search_handler))
         .route("/api/memory/list", get(list_memories_handler))
         .route("/api/memory/context", get(context_handler))
         .route("/api/memory/:id", delete(forget_handler))
@@ -73,11 +199,12 @@ async fn remember_handler(
     let memory_svc = state.memory_svc.clone();
     let content = body.content.clone();
     let source = body.source.clone();
+    let scope = scope_or_default(Some(&body.scope)).to_string();
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(AppError::Pool)?;
         tokio::runtime::Handle::current()
-            .block_on(async move { memory_svc.remember(&conn, &content, &source).await })
+            .block_on(async move { memory_svc.remember(&conn, &content, &source, &scope).await })
             .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
@@ -89,26 +216,95 @@ async fn remember_handler(
     }))
 }
 
+/// Validate and queue a conversation for fact extraction (blank scope → `default`).
+/// Returns the job id and its status: `pending` for a new job, the current status when
+/// an existing job for the same conversation and scope was reused.
+pub(crate) fn enqueue_observe(
+    state: &AppState,
+    conn: &Connection,
+    conversation: &str,
+    scope: Option<&str>,
+) -> Result<(String, String), AppError> {
+    if conversation.trim().is_empty() {
+        return Err(AppError::BadRequest("conversation must not be blank".to_string()));
+    }
+    let scope = scope_or_default(scope);
+    let (job_id, created) = state.memory_svc.enqueue_observe(conn, conversation, scope)?;
+    let status = if created {
+        "pending".to_string()
+    } else {
+        MemoryJobRepository::new(conn)
+            .get_by_id(&job_id)?
+            .map(|j| j.status)
+            .unwrap_or_else(|| "pending".to_string())
+    };
+    Ok((job_id, status))
+}
+
 async fn observe_handler(
     State(state): State<AppState>,
     Json(body): Json<ObserveRequest>,
-) -> Result<Json<RememberResponse>, AppError> {
-    let pool = state.pool.clone();
-    let memory_svc = state.memory_svc.clone();
-    let conversation = body.conversation.clone();
+) -> Result<(StatusCode, Json<ObserveResponse>), AppError> {
+    let (job_id, status) = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        enqueue_observe(&state, &conn, &body.conversation, Some(&body.scope))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join error: {e}")))??;
 
-    let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get().map_err(AppError::Pool)?;
-        tokio::runtime::Handle::current()
-            .block_on(async move { memory_svc.observe(&conn, &conversation).await })
-            .map_err(|e| AppError::Llm(e.to_string()))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(ObserveResponse { job_id, status }),
+    ))
+}
+
+async fn memory_job_handler(
+    State(state): State<AppState>,
+    Path(job_id): Path<String>,
+) -> Result<Json<MemoryJobResponse>, AppError> {
+    let id = job_id.clone();
+    let job = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        MemoryJobRepository::new(&conn).get_by_id(&id).map_err(AppError::Db)
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join error: {e}")))??
+    .ok_or_else(|| AppError::NotFound(format!("memory job {job_id}")))?;
+
+    Ok(Json(MemoryJobResponse {
+        job_id: job.id,
+        status: job.status,
+        facts_extracted: job.facts_extracted,
+        error: job.error,
+    }))
+}
+
+async fn search_handler(
+    State(state): State<AppState>,
+    Json(body): Json<SearchRequest>,
+) -> Result<Json<SearchResponse>, AppError> {
+    let hits = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        search_memories(&state, &conn, &body).map_err(search_error)
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
 
-    Ok(Json(RememberResponse {
-        facts_extracted: result.facts_extracted,
-        memories_updated: result.memories_updated,
+    Ok(Json(SearchResponse {
+        hits: hits
+            .into_iter()
+            .map(|h| SearchHitItem {
+                id: h.memory_id,
+                content: h.content,
+                score: h.score,
+                scope: h.scope,
+                category: h.category,
+                project: h.project,
+                source: h.source,
+                created_at: h.created_at,
+                access_count: h.access_count,
+            })
+            .collect(),
     }))
 }
 
@@ -118,11 +314,14 @@ async fn list_memories_handler(
 ) -> Result<Json<Vec<MemoryItem>>, AppError> {
     let pool = state.pool.clone();
     let category = params.category.clone();
+    let scope = params.scope.clone();
 
     let memories = tokio::task::spawn_blocking(move || -> Result<Vec<Memory>, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
         let repo = MemoryRepository::new(&conn);
-        let all = repo.get_all_active().map_err(AppError::Db)?;
+        let all = repo
+            .get_all_active(normalize_scope(scope.as_deref()))
+            .map_err(AppError::Db)?;
 
         // Filter by category if provided
         if let Some(cat) = &category {
@@ -147,6 +346,8 @@ async fn list_memories_handler(
             project: m.project,
             relation: m.relation,
             created_at: m.created_at,
+            scope: m.scope,
+            access_count: m.access_count,
         })
         .collect();
 
@@ -155,24 +356,21 @@ async fn list_memories_handler(
 
 async fn context_handler(
     State(state): State<AppState>,
+    Query(params): Query<ContextQuery>,
 ) -> Result<Json<ProfileResponse>, AppError> {
     let pool = state.pool.clone();
+    let scope = params.scope.clone();
+    let profile_svc = state.profile_svc.clone();
 
-    // Get all active memories (blocking)
-    let memories = tokio::task::spawn_blocking(move || -> Result<Vec<Memory>, AppError> {
+    // SQLite reads/writes are blocking; the LLM (cache miss only) is driven via block_on.
+    let profile = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
-        let repo = MemoryRepository::new(&conn);
-        repo.get_all_active().map_err(AppError::Db)
+        tokio::runtime::Handle::current()
+            .block_on(profile_svc.get_or_build(&conn, normalize_scope(scope.as_deref())))
+            .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
-
-    // Build profile (async, calls LLM) — profile_svc is Arc<ProfileService> which is Send+Sync
-    let profile_svc = state.profile_svc.clone();
-    let profile = profile_svc
-        .build_profile(&memories)
-        .await
-        .map_err(|e| AppError::Llm(e.to_string()))?;
 
     Ok(Json(ProfileResponse {
         static_summary: profile.static_summary,
@@ -202,5 +400,28 @@ async fn forget_handler(
         Ok(Json(serde_json::json!({"status": "deleted"})))
     } else {
         Err(AppError::NotFound(format!("memory {memory_id}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clamp_top_k, normalize_scope, scope_or_default};
+
+    #[test]
+    fn blank_scope_is_no_scope() {
+        assert_eq!(normalize_scope(None), None);
+        assert_eq!(normalize_scope(Some("")), None);
+        assert_eq!(normalize_scope(Some("  \t")), None);
+        assert_eq!(normalize_scope(Some("work")), Some("work"));
+        assert_eq!(scope_or_default(Some(" ")), "default");
+        assert_eq!(scope_or_default(None), "default");
+        assert_eq!(scope_or_default(Some("work")), "work");
+    }
+
+    #[test]
+    fn top_k_is_clamped() {
+        assert_eq!(clamp_top_k(0), 1);
+        assert_eq!(clamp_top_k(10), 10);
+        assert_eq!(clamp_top_k(1000), 100);
     }
 }

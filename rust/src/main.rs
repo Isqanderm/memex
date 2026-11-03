@@ -29,6 +29,7 @@ use llm::create_llm_provider;
 use memory::extractor::FactExtractor;
 use memory::profile::ProfileService;
 use memory::service::MemorySvc;
+use memory::extraction_worker::MemoryExtractionWorker;
 use memory::worker::MemoryExpiryWorker;
 use search::context::ContextBuilder;
 use search::memory_search::MemorySearch;
@@ -66,6 +67,8 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = Arc::new(build_pool(&config.database_path)?);
     let tantivy = Arc::new(TantivyStore::open(&config.tantivy_path)?);
+    let memory_fts_dir = format!("{}/memories", config.tantivy_path);
+    let memory_fts = Arc::new(TantivyStore::open(&memory_fts_dir)?);
     let vectors = Arc::new(VectorStore::new(config.embedding_dimensions));
 
     info!("Loading embedding model {}...", config.local_embedding_model);
@@ -85,16 +88,29 @@ async fn main() -> anyhow::Result<()> {
     let llm = create_llm_provider(&config)?;
     let extractor = Arc::new(FactExtractor::new(llm.clone()));
     let profile_svc = Arc::new(ProfileService::new(llm.clone()));
-    let memory_svc = Arc::new(MemorySvc::new(extractor.clone(), embed.clone(), vectors.clone()));
+    let memory_svc = Arc::new(MemorySvc::new(
+        extractor.clone(),
+        embed.clone(),
+        vectors.clone(),
+        memory_fts.clone(),
+        config.memory_conflict_similarity,
+    ));
+
+    // Keyword search over facts degrades to vectors only; never abort startup here.
+    if let Err(e) = memory_svc.ensure_memory_index(&*pool.get()?, std::path::Path::new(&memory_fts_dir)) {
+        tracing::warn!("Memory keyword index check failed: {e}");
+    }
 
     let retrieval = Arc::new(RetrievalService {
         embed: embed.clone(),
         tantivy: tantivy.clone(),
+        memory_fts: memory_fts.clone(),
         vectors: vectors.clone(),
         reranker,
+        memory_rerank: config.memory_rerank,
         llm: llm.clone(),
         context_builder: ContextBuilder,
-        memory_search: MemorySearch::new(),
+        memory_search: MemorySearch::new(config.memory_retrieval_similarity, 10),
         lang: LanguageDetector,
         semantic_top_k: config.semantic_top_k,
         bm25_top_k: config.bm25_top_k,
@@ -127,19 +143,27 @@ async fn main() -> anyhow::Result<()> {
         svc: memory_svc.clone(),
         interval_secs: 3600,
     });
+    let extraction_worker = Arc::new(MemoryExtractionWorker {
+        pool: pool.clone(),
+        svc: memory_svc.clone(),
+    });
 
     let w1 = ingestion_worker.clone();
     let w2 = expiry_worker.clone();
     let rx1 = shutdown_rx.clone();
     let rx2 = shutdown_rx.clone();
+    let w3 = extraction_worker.clone();
+    let rx3 = shutdown_rx.clone();
 
     tokio::spawn(async move { w1.run(rx1).await });
     tokio::spawn(async move { w2.run(rx2).await });
+    tokio::spawn(async move { w3.run(rx3).await });
 
     let state = AppState {
         pool,
         config: Arc::new(config.clone()),
         tantivy,
+        memory_fts,
         vectors,
         embed,
         retrieval,

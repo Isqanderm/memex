@@ -16,10 +16,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{delete_document_by_id, enqueue_upload};
+use crate::api::memories::{
+    enqueue_observe, normalize_scope, scope_or_default, search_error, search_memories,
+    SearchRequest,
+};
+use crate::api::query::search_chunks;
 use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
 use crate::db::repositories::memories::MemoryRepository;
+use crate::db::repositories::memory_jobs::MemoryJobRepository;
 use crate::error::AppError;
 
 // ── Tool parameter types ──────────────────────────────────────────────────────
@@ -31,6 +37,8 @@ pub struct RememberParams {
     pub content: String,
     /// Memory source label (default: "explicit").
     pub source: Option<String>,
+    /// Memory scope (default: "default").
+    pub scope: Option<String>,
 }
 
 /// Parameters for the `recall` tool.
@@ -38,8 +46,12 @@ pub struct RememberParams {
 pub struct RecallParams {
     /// Query text.
     pub query: String,
+    /// Optional memory scope filter.
+    pub scope: Option<String>,
     /// Optional memory category filter.
     pub category: Option<String>,
+    /// Maximum number of facts to return (default 10).
+    pub top_k: Option<usize>,
 }
 
 /// Parameters for the `observe` tool.
@@ -47,6 +59,15 @@ pub struct RecallParams {
 pub struct ObserveParams {
     /// Full conversation history as text.
     pub conversation: String,
+    /// Memory scope (default: "default").
+    pub scope: Option<String>,
+}
+
+/// Parameters for the `check_memory_job` tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct CheckMemoryJobParams {
+    /// Job ID returned by `observe`.
+    pub job_id: String,
 }
 
 /// Parameters for the `memories` tool.
@@ -54,6 +75,17 @@ pub struct ObserveParams {
 pub struct MemoriesParams {
     /// Optional category filter.
     pub category: Option<String>,
+    /// Optional scope filter (default: all scopes).
+    pub scope: Option<String>,
+}
+
+/// Parameters for the `search_documents` tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct SearchDocumentsParams {
+    /// Query text.
+    pub query: String,
+    /// Maximum number of chunks to return (default 5, at most 50).
+    pub top_k: Option<usize>,
 }
 
 /// Parameters for the `index_text` tool.
@@ -144,10 +176,11 @@ impl MemexMcp {
     ) -> Result<CallToolResult, ErrorData> {
         let memory_svc = self.state.memory_svc.clone();
         let source = p.source.unwrap_or_else(|| "explicit".to_string());
+        let scope = scope_or_default(p.scope.as_deref()).to_string();
         let r = self
             .with_conn(move |conn| {
                 tokio::runtime::Handle::current()
-                    .block_on(memory_svc.remember(conn, &p.content, &source))
+                    .block_on(memory_svc.remember(conn, &p.content, &source, &scope))
                     .map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
@@ -158,41 +191,47 @@ impl MemexMcp {
         ))
     }
 
-    #[tool(description = "Search memories and documents using RAG pipeline. Returns an LLM-synthesized answer with sources.")]
+    #[tool(description = "Search personal memory facts. Returns matching facts with score, scope, category and date; no LLM involved. Use /api/query for synthesized answers.")]
     pub async fn recall(
         &self,
         Parameters(p): Parameters<RecallParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let retrieval = self.state.retrieval.clone();
-        let result = self
+        let state = self.state.clone();
+        let req = SearchRequest {
+            query: p.query,
+            scope: p.scope,
+            category: p.category,
+            top_k: p.top_k.unwrap_or(10),
+        };
+        let hits = self
             .with_conn(move |conn| {
-                retrieval
-                    .query(conn, &p.query, p.category.as_deref())
-                    .map_err(|e| AppError::Llm(e.to_string()))
+                search_memories(&state, conn, &req).map_err(search_error)
             })
-            .await
-            .map_err(internal)?;
+            .await;
+        let hits = match hits {
+            Ok(h) => h,
+            Err(AppError::BadRequest(m)) => return domain_error(m),
+            Err(e) => return Err(internal(e)),
+        };
 
-        let mut out = result.answer;
-        let mut seen = HashSet::new();
-        let mut refs = Vec::new();
-        for s in &result.sources {
-            let doc_id = s.get("doc_id").and_then(|v| v.as_str()).unwrap_or("");
-            if !seen.insert(doc_id.to_string()) {
-                continue;
-            }
-            let title = s
-                .get("title")
-                .or_else(|| s.get("filename"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("source");
-            refs.push(format!("  - {title}"));
+        if hits.is_empty() {
+            return ok_text("No matching memories.".to_string());
         }
-        if !refs.is_empty() {
-            out.push_str("\n\nSources:\n");
-            out.push_str(&refs.join("\n"));
-        }
-        ok_text(out)
+        let lines: Vec<String> = hits
+            .iter()
+            .map(|h| {
+                format!(
+                    "- [{}|{}|{}] {} (id: {}, score: {:.3})",
+                    h.category.as_deref().unwrap_or("-"),
+                    h.scope,
+                    h.created_at.get(..10).unwrap_or(&h.created_at),
+                    h.content,
+                    h.memory_id,
+                    h.score
+                )
+            })
+            .collect();
+        ok_text(lines.join("\n"))
     }
 
     #[tool(description = "Deactivate (soft-delete) a memory by its ID.")]
@@ -219,25 +258,19 @@ impl MemexMcp {
 
     #[tool(description = "Get user profile as static (stable facts) and dynamic (recent activity). Call as the FIRST tool at the start of every session.")]
     pub async fn context(&self) -> Result<CallToolResult, ErrorData> {
-        let memories = self
-            .with_conn(|conn| {
-                MemoryRepository::new(conn)
-                    .get_all_active()
-                    .map_err(AppError::Db)
+        let profile_svc = self.state.profile_svc.clone();
+        let profile = self
+            .with_conn(move |conn| {
+                tokio::runtime::Handle::current()
+                    .block_on(profile_svc.get_or_build(conn, None))
+                    .map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
             .map_err(internal)?;
 
-        if memories.is_empty() {
+        if profile.raw_count == 0 {
             return ok_text("No memories yet.");
         }
-
-        let profile = self
-            .state
-            .profile_svc
-            .build_profile(&memories)
-            .await
-            .map_err(internal)?;
 
         let mut lines = Vec::new();
         if !profile.static_summary.is_empty() {
@@ -254,24 +287,55 @@ impl MemexMcp {
         ok_text(lines.join("\n"))
     }
 
-    #[tool(description = "Extract facts from a conversation and save to memory. Call as the LAST tool at the end of every session, passing the full conversation.")]
+    #[tool(description = "Queue fact extraction from a conversation; returns a job_id at once (check it with check_memory_job). Call as the LAST tool at the end of every session, passing the full conversation.")]
     pub async fn observe(
         &self,
         Parameters(p): Parameters<ObserveParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let memory_svc = self.state.memory_svc.clone();
-        let r = self
+        let state = self.state.clone();
+        let (job_id, status) = match self
             .with_conn(move |conn| {
-                tokio::runtime::Handle::current()
-                    .block_on(memory_svc.observe(conn, &p.conversation))
-                    .map_err(|e| AppError::Llm(e.to_string()))
+                enqueue_observe(&state, conn, &p.conversation, p.scope.as_deref())
+            })
+            .await
+        {
+            Ok(r) => r,
+            Err(AppError::BadRequest(m)) => return domain_error(m),
+            Err(e) => return Err(internal(e)),
+        };
+        if status == "pending" {
+            ok_text(format!("Queued. job_id: {job_id}. Check with check_memory_job."))
+        } else {
+            ok_text(format!(
+                "Already queued (status: {status}). job_id: {job_id}. Check with check_memory_job."
+            ))
+        }
+    }
+
+    #[tool(description = "Check a fact-extraction job queued by observe. Returns pending/processing/done (with the number of facts)/error.")]
+    pub async fn check_memory_job(
+        &self,
+        Parameters(p): Parameters<CheckMemoryJobParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let id = p.job_id.clone();
+        let job = self
+            .with_conn(move |conn| {
+                MemoryJobRepository::new(conn).get_by_id(&id).map_err(AppError::Db)
             })
             .await
             .map_err(internal)?;
-        ok_text(format!(
-            "Session observed. Facts extracted: {}, memories updated: {}",
-            r.facts_extracted, r.memories_updated
-        ))
+
+        match job {
+            None => domain_error(format!("Memory job not found: {}", p.job_id)),
+            Some(job) => match job.status.as_str() {
+                "done" => ok_text(format!("Done. Facts extracted: {}", job.facts_extracted)),
+                "error" => ok_text(format!(
+                    "Error: {}",
+                    job.error.as_deref().unwrap_or("unknown error")
+                )),
+                status => ok_text(format!("{status} — not ready yet, check again later.")),
+            },
+        }
     }
 
     #[tool(description = "List all active memories with their content, source, and timestamps.")]
@@ -279,10 +343,11 @@ impl MemexMcp {
         &self,
         Parameters(p): Parameters<MemoriesParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        let scope = p.scope.clone();
         let all = self
-            .with_conn(|conn| {
+            .with_conn(move |conn| {
                 MemoryRepository::new(conn)
-                    .get_all_active()
+                    .get_all_active(normalize_scope(scope.as_deref()))
                     .map_err(AppError::Db)
             })
             .await
@@ -391,6 +456,56 @@ impl MemexMcp {
                 status => ok_text(format!("{status} — not ready yet, check again later.")),
             },
         }
+    }
+
+    #[tool(description = "Search indexed documents by meaning. Returns the best matching chunks with document title, doc_id, chunk id and score; no LLM involved.")]
+    pub async fn search_documents(
+        &self,
+        Parameters(p): Parameters<SearchDocumentsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if p.query.trim().is_empty() {
+            return domain_error("query must not be blank");
+        }
+        let state = self.state.clone();
+        let top_k = p.top_k.unwrap_or(5).clamp(1, 50);
+        let hits = self
+            .with_conn(move |conn| {
+                let hits = search_chunks(&state, conn, &p.query, top_k)?;
+                let docs = DocumentRepository::new(conn);
+                let mut out = Vec::with_capacity(hits.len());
+                for h in hits {
+                    let label = match docs.get_by_id(&h.doc_id).map_err(AppError::Db)? {
+                        Some(d) => d.title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
+                            let name = d.source.rsplit(['/', '\\']).next().unwrap_or("");
+                            if name.is_empty() { h.doc_id.clone() } else { name.to_string() }
+                        }),
+                        None => h.doc_id.clone(),
+                    };
+                    out.push((label, h));
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(internal)?;
+
+        if hits.is_empty() {
+            return ok_text("No matching chunks.");
+        }
+        let lines: Vec<String> = hits
+            .iter()
+            .map(|(label, h)| {
+                let text = h.content.split_whitespace().collect::<Vec<_>>().join(" ");
+                let snippet = match text.char_indices().nth(300) {
+                    Some((i, _)) => format!("{}…", &text[..i]),
+                    None => text,
+                };
+                format!(
+                    "- [{label}] {snippet} (doc_id: {}, chunk: {}, score: {:.3})",
+                    h.doc_id, h.chunk_id, h.score
+                )
+            })
+            .collect();
+        ok_text(lines.join("\n"))
     }
 
     #[tool(description = "List all indexed documents: id, title, mime type, date.")]

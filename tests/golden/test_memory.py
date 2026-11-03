@@ -1,4 +1,6 @@
 # tests/golden/test_memory.py
+import uuid
+
 import httpx
 import pytest
 
@@ -17,7 +19,7 @@ def _assert_delete_memory_ok(resp: httpx.Response) -> None:
 @pytest.mark.golden
 @pytest.mark.unit
 class TestMemoryContract:
-    """API contract tests for /api/memory/* — requires LLM only for remember/observe."""
+    """API contract tests for /api/memory/* — requires LLM only for remember (observe is queued)."""
 
     def test_memory_list_returns_array(self, client: httpx.Client) -> None:
         resp = client.get("/api/memory/list")
@@ -93,6 +95,43 @@ class TestMemoryContract:
         ids_after = {m["id"] for m in items_after}
         assert memory_id not in ids_after, f"Memory {memory_id} still present after delete"
 
+    def test_memory_search_shape(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/search", json={"query": "anything"})
+        assert resp.status_code == 200
+        hits = resp.json()["hits"]
+        assert isinstance(hits, list)
+        fields = {"id", "content", "score", "scope", "category", "project",
+                  "source", "created_at", "access_count"}
+        for hit in hits:
+            assert set(hit) == fields
+
+    def test_memory_search_blank_query_is_400(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/search", json={"query": "   "})
+        assert resp.status_code == 400
+
     def test_delete_nonexistent_memory_returns_404(self, client: httpx.Client) -> None:
         resp = client.delete("/api/memory/nonexistent-id-00000000")
         assert resp.status_code in (400, 404, 422)
+
+    def test_observe_is_async(self, client: httpx.Client) -> None:
+        conversation = f"User: I moved to Novi Sad. ({uuid.uuid4()})"
+        resp = client.post("/api/memory/observe", json={"conversation": conversation})
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["status"] == "pending" and data["job_id"]
+        job = client.get(f"/api/memory/jobs/{data['job_id']}")
+        assert job.status_code == 200
+        assert job.json()["status"] in ("pending", "processing", "done", "error")
+
+    def test_observe_same_text_twice_returns_same_job(self, client: httpx.Client) -> None:
+        body = {"conversation": "User: I prefer tabs over spaces."}
+        a = client.post("/api/memory/observe", json=body).json()["job_id"]
+        second = client.post("/api/memory/observe", json=body)
+        assert second.status_code == 202
+        assert second.json()["job_id"] == a
+        # A reused job reports its real status.
+        assert second.json()["status"] in ("pending", "processing", "done")
+
+    def test_observe_blank_conversation_is_400(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/observe", json={"conversation": "   "})
+        assert resp.status_code == 400

@@ -10,6 +10,7 @@ from mcp.client.streamable_http import streamable_http_client
 EXPECTED_TOOLS = {
     "remember", "recall", "forget", "context", "observe", "memories",
     "index_text", "check_indexing", "list_documents", "delete_document",
+    "check_memory_job", "search_documents",
 }
 
 
@@ -31,6 +32,22 @@ class TestMcpContract:
                 await s.initialize()
                 res = await s.call_tool("list_documents", {})
         assert not res.isError
+
+    @pytest.mark.asyncio
+    async def test_recall_returns_text_without_error(self, base_url: str) -> None:
+        async with streamable_http_client(f"{base_url}/mcp") as (r, w, _):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                res = await s.call_tool("recall", {"query": "rust"})
+        assert not res.isError
+
+    @pytest.mark.asyncio
+    async def test_search_documents_returns_text_without_error(self, base_url: str) -> None:
+        async with streamable_http_client(f"{base_url}/mcp") as (r, w, _):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                res = await s.call_tool("search_documents", {"query": "anything"})
+        assert not res.isError, _text(res)
 
     @pytest.mark.asyncio
     async def test_host_header_memex_is_accepted(self, base_url: str) -> None:

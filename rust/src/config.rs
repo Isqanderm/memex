@@ -43,6 +43,12 @@ pub struct Config {
     pub bm25_top_k: usize,
     pub rrf_k: usize,
     pub reranker_top_n: usize,
+    /// Cosine similarity above which an existing fact is sent to conflict resolution.
+    pub memory_conflict_similarity: f32,
+    /// Minimum cosine similarity for a memory vector hit at retrieval.
+    pub memory_retrieval_similarity: f32,
+    /// Cross-encoder rerank of memory hits (`MEMORY_RERANK`, default true).
+    pub memory_rerank: bool,
     pub host: String,
     pub port: u16,
 }
@@ -62,6 +68,12 @@ impl Config {
         let get_parse = |key: &str, default: &str| -> Result<usize, String> {
             get_or(key, default)
                 .parse::<usize>()
+                .map_err(|e| format!("{key}: {e}"))
+        };
+
+        let get_parse_f32 = |key: &str, default: &str| -> Result<f32, String> {
+            get_or(key, default)
+                .parse::<f32>()
                 .map_err(|e| format!("{key}: {e}"))
         };
 
@@ -94,6 +106,9 @@ impl Config {
             bm25_top_k: get_parse("BM25_TOP_K", "20")?,
             rrf_k: get_parse("RRF_K", "60")?,
             reranker_top_n: get_parse("RERANKER_TOP_N", "5")?,
+            memory_conflict_similarity: get_parse_f32("MEMORY_CONFLICT_SIMILARITY", "0.82")?,
+            memory_retrieval_similarity: get_parse_f32("MEMORY_RETRIEVAL_SIMILARITY", "0.60")?,
+            memory_rerank: Self::parse_bool("MEMORY_RERANK", std::env::var("MEMORY_RERANK").ok(), true)?,
             host: get_or("HOST", "0.0.0.0"),
             port: get_or("PORT", "8000").parse().map_err(|e| format!("PORT: {e}"))?,
         };
@@ -113,6 +128,17 @@ impl Config {
                 Err("OPENAI_LLM_API_KEY or LLM_BASE_URL is required when LLM_PROVIDER=openai".to_string())
             }
             _ => Ok(()),
+        }
+    }
+
+    /// Parses a boolean env value (`true/false/1/0/on/off`, case-insensitive);
+    /// unset or blank yields `default`.
+    pub fn parse_bool(key: &str, raw: Option<String>, default: bool) -> Result<bool, String> {
+        match Self::non_blank(raw).map(|s| s.to_lowercase()).as_deref() {
+            None => Ok(default),
+            Some("true" | "1" | "on") => Ok(true),
+            Some("false" | "0" | "off") => Ok(false),
+            Some(other) => Err(format!("{key}: expected true/false/1/0/on/off, got {other:?}")),
         }
     }
 
@@ -161,6 +187,9 @@ impl Config {
             bm25_top_k: 20,
             rrf_k: 60,
             reranker_top_n: 5,
+            memory_conflict_similarity: 0.82,
+            memory_retrieval_similarity: 0.60,
+            memory_rerank: true,
             host: "127.0.0.1".to_string(),
             port: 8000,
         }
@@ -239,5 +268,23 @@ mod tests {
         assert_eq!(cfg.reranker_model, "jina-reranker-v2-base-multilingual");
         assert_eq!(cfg.model_cache_dir, "data/models");
         assert!(cfg.mcp_allowed_hosts.contains(&"memex".to_string()));
+    }
+
+    #[test]
+    fn parse_bool_accepts_common_spellings_and_defaults_on_blank() {
+        for v in ["true", "1", "on", " TRUE ", "On"] {
+            assert_eq!(Config::parse_bool("X", Some(v.into()), false), Ok(true), "{v}");
+        }
+        for v in ["false", "0", "off", "OFF"] {
+            assert_eq!(Config::parse_bool("X", Some(v.into()), true), Ok(false), "{v}");
+        }
+        assert_eq!(Config::parse_bool("X", None, true), Ok(true));
+        assert_eq!(Config::parse_bool("X", Some("  ".into()), true), Ok(true));
+        assert!(Config::parse_bool("X", Some("maybe".into()), true).is_err());
+    }
+
+    #[test]
+    fn memory_rerank_defaults_to_true() {
+        assert!(Config::default_for_test().memory_rerank);
     }
 }

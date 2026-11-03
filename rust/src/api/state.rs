@@ -14,6 +14,7 @@ pub struct AppState {
     pub pool: Arc<DbPool>,
     pub config: Arc<Config>,
     pub tantivy: Arc<TantivyStore>,
+    pub memory_fts: Arc<TantivyStore>,
     pub vectors: Arc<VectorStore>,
     pub embed: Arc<EmbeddingClient>,
     pub retrieval: Arc<RetrievalService>,

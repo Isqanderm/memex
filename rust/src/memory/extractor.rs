@@ -201,26 +201,9 @@ pub fn parse_relations_json(raw: &str) -> anyhow::Result<Vec<RelationResult>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::{LlmResponse, TokenStream};
+    use crate::llm::test_support::ScriptedLlm;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
-
-    struct ScriptedLlm {
-        answers: Mutex<Vec<&'static str>>,
-        calls: AtomicUsize,
-    }
-
-    #[async_trait::async_trait]
-    impl LlmProvider for ScriptedLlm {
-        async fn complete(&self, _p: &str) -> anyhow::Result<LlmResponse> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            let a = self.answers.lock().unwrap().remove(0);
-            Ok(LlmResponse { answer: a.into(), input_tokens: 0, output_tokens: 0 })
-        }
-        async fn complete_stream(&self, _p: &str) -> anyhow::Result<TokenStream> {
-            unimplemented!()
-        }
-    }
 
     #[tokio::test]
     async fn extract_retries_once_on_garbage_then_parses() {
