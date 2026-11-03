@@ -1,6 +1,8 @@
 use rusqlite::Connection;
+use tracing::warn;
 
 use crate::db::repositories::memories::MemoryRepository;
+use crate::search::reranker::Reranker;
 use crate::search::rrf::{rrf_merge, SearchHit};
 use crate::search::tantivy_fts::TantivyStore;
 use crate::search::vectors::VectorStore;
@@ -13,7 +15,7 @@ const RRF_K: usize = 60;
 pub struct MemoryHit {
     pub memory_id: String,
     pub content: String,
-    /// Reciprocal Rank Fusion score over the vector and BM25 lists.
+    /// Cross-encoder score when reranked, otherwise the RRF score.
     pub score: f32,
     pub source: String,
     pub category: Option<String>,
@@ -23,7 +25,8 @@ pub struct MemoryHit {
     pub access_count: i64,
 }
 
-/// Hybrid retrieval of memory facts: sqlite-vec ∪ tantivy BM25, fused with RRF.
+/// Hybrid retrieval of memory facts: sqlite-vec ∪ tantivy BM25, fused with RRF,
+/// then reranked with the cross-encoder.
 #[derive(Clone)]
 pub struct MemorySearch {
     /// Minimum cosine similarity for a vector hit.
@@ -46,12 +49,15 @@ impl MemorySearch {
     /// 2. BM25 hits from the memory FTS index.
     /// 3. RRF merge (`chunk_id` = memory id).
     /// 4. Load each memory, keep active ones matching `scope` and `category`.
+    /// 5. Rerank up to `top_k * 3` candidates with the cross-encoder (when given and
+    ///    there is more than one candidate); on rerank error keep the RRF order.
     #[allow(clippy::too_many_arguments)]
     pub fn search(
         &self,
         conn: &Connection,
         vectors: &VectorStore,
         fts: &TantivyStore,
+        reranker: Option<&Reranker>,
         query: &str,
         query_vector: &[f32],
         lang: &str,
@@ -62,6 +68,7 @@ impl MemorySearch {
             return Ok(vec![]);
         }
         let candidates = self.top_k.saturating_mul(2);
+        let rerank_pool = self.top_k.saturating_mul(3);
 
         let vec_hits: Vec<SearchHit> = vectors
             .find_similar_memories(conn, query_vector, candidates, self.retrieval_similarity)?
@@ -106,11 +113,30 @@ impl MemorySearch {
                 created_at: memory.created_at,
                 access_count: memory.access_count,
             });
-            if results.len() >= self.top_k {
+            if results.len() >= rerank_pool {
                 break;
             }
         }
 
+        if let (Some(reranker), true) = (reranker, results.len() > 1) {
+            let texts: Vec<&str> = results.iter().map(|h| h.content.as_str()).collect();
+            match reranker.rerank(query, &texts, self.top_k) {
+                Ok(ranked) => {
+                    return Ok(ranked
+                        .into_iter()
+                        .filter_map(|r| {
+                            results.get(r.original_index).cloned().map(|mut h| {
+                                h.score = r.score;
+                                h
+                            })
+                        })
+                        .collect());
+                }
+                Err(e) => warn!("Memory rerank failed, keeping RRF order: {e}"),
+            }
+        }
+
+        results.truncate(self.top_k);
         Ok(results)
     }
 }
@@ -177,7 +203,7 @@ mod tests {
 
         let query = vec![0.0_f32; 384];
         let hits = searcher
-            .search(&conn, &store, &f.fts, "anything", &query, "en", None, None)
+            .search(&conn, &store, &f.fts, None, "anything", &query, "en", None, None)
             .unwrap();
         assert!(hits.is_empty());
     }
@@ -191,7 +217,7 @@ mod tests {
         let searcher = MemorySearch::new(0.60, 10);
         let query = vec![0.0_f32; 384];
         let hits = searcher
-            .search(&conn, &VectorStore::new(384), &f.fts, "MEMEX_URL", &query, "en", None, None)
+            .search(&conn, &VectorStore::new(384), &f.fts, None, "MEMEX_URL", &query, "en", None, None)
             .unwrap();
         assert!(!hits.is_empty(), "BM25 should find the exact token");
         assert_eq!(hits[0].memory_id, id);
@@ -212,7 +238,7 @@ mod tests {
         let searcher = MemorySearch::new(0.60, 10);
         let query = vec![0.0_f32; 384];
         let hits = searcher
-            .search(&conn, &VectorStore::new(384), &f.fts, "MEMEX_URL", &query, "en", None, None)
+            .search(&conn, &VectorStore::new(384), &f.fts, None, "MEMEX_URL", &query, "en", None, None)
             .unwrap();
         assert!(hits.is_empty());
     }
@@ -227,7 +253,7 @@ mod tests {
         let searcher = MemorySearch::new(0.60, 10);
         let query = vec![0.0_f32; 384];
         let hits = searcher
-            .search(&conn, &VectorStore::new(384), &f.fts, "coffee", &query, "en", Some("a"), None)
+            .search(&conn, &VectorStore::new(384), &f.fts, None, "coffee", &query, "en", Some("a"), None)
             .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].memory_id, a);
@@ -257,7 +283,7 @@ mod tests {
         assert_eq!(n, 2);
 
         let hits = MemorySearch::new(0.60, 10)
-            .search(&conn, &VectorStore::new(384), &f.fts, "MEMEX_URL", &[0.0; 384], "en", None, None)
+            .search(&conn, &VectorStore::new(384), &f.fts, None, "MEMEX_URL", &[0.0; 384], "en", None, None)
             .unwrap();
         assert_eq!(hits.first().map(|h| h.memory_id.as_str()), Some(id.as_str()));
 
@@ -270,8 +296,40 @@ mod tests {
         let conn = f.pool.get().unwrap();
         add_fact(&conn, &f.fts, "User's MEMEX_URL is http://memex:8000", "default");
         let hits = MemorySearch::new(0.60, 0)
-            .search(&conn, &VectorStore::new(384), &f.fts, "MEMEX_URL", &[0.0; 384], "en", None, None)
+            .search(&conn, &VectorStore::new(384), &f.fts, None, "MEMEX_URL", &[0.0; 384], "en", None, None)
             .unwrap();
         assert!(hits.is_empty());
+    }
+
+    /// Needs the jina reranker ONNX model (MODEL_CACHE_DIR, default ~/.cache/fastembed).
+    #[test]
+    #[ignore]
+    fn reranker_puts_the_answering_fact_first() {
+        let f = setup();
+        let conn = f.pool.get().unwrap();
+        // Indexed with the "User" prefix so both facts are BM25 candidates for "user".
+        let novi_sad = add_fact(&conn, &f.fts, "User lives in Novi Sad", "default");
+        add_fact(&conn, &f.fts, "User uses Python", "default");
+
+        let dir = std::env::var("MODEL_CACHE_DIR").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache/fastembed")
+        });
+        let reranker = Reranker::new("jina-reranker-v2-base-multilingual", &dir).unwrap();
+
+        let search = |q: &str, r: Option<&Reranker>| {
+            MemorySearch::new(0.60, 10)
+                .search(&conn, &VectorStore::new(384), &f.fts, r, q, &[0.0; 384], "en", None, None)
+                .unwrap()
+        };
+
+        let hits = search("where does the user live", Some(&reranker));
+        assert_eq!(hits.len(), 2, "both facts are candidates");
+        assert_eq!(hits[0].memory_id, novi_sad);
+
+        // Only "user" overlaps lexically: BM25/RRF ranks the shorter Python fact first,
+        // the cross-encoder must flip it.
+        let q = "which city is the user from";
+        assert_ne!(search(q, None)[0].memory_id, novi_sad, "precondition: RRF order is wrong");
+        assert_eq!(search(q, Some(&reranker))[0].memory_id, novi_sad);
     }
 }

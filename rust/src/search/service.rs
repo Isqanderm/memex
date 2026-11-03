@@ -101,6 +101,7 @@ impl RetrievalService {
             conn,
             &self.vectors,
             &self.memory_fts,
+            Some(&self.reranker),
             query,
             &query_vector,
             &lang,

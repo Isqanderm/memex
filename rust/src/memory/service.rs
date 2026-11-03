@@ -34,10 +34,20 @@ pub fn backfill_memory_fts(conn: &Connection, fts: &TantivyStore) -> anyhow::Res
     }
     for m in &facts {
         let lang = LanguageDetector.detect(&m.content);
-        fts.add_chunk(&m.id, "memory", &lang, &m.content)?;
+        fts.add_chunk(&m.id, "memory", &lang, fts_text(&m.content))?;
     }
     fts.commit()?;
     Ok(facts.len())
+}
+
+/// Text indexed in the memory FTS for a fact: the leading "User " / "Пользователь "
+/// template prefix is dropped so the shared token does not dominate BM25.
+/// The stored content is unchanged.
+pub fn fts_text(content: &str) -> &str {
+    ["User ", "Пользователь "]
+        .iter()
+        .find_map(|p| content.strip_prefix(p))
+        .unwrap_or(content)
 }
 
 pub struct RememberResult {
@@ -80,7 +90,7 @@ impl MemorySvc {
     /// Buffer a fact for the memory FTS index (committed by the caller).
     fn index_fact(&self, memory_id: &str, content: &str) -> anyhow::Result<()> {
         let lang = LanguageDetector.detect(content);
-        self.memory_fts.add_chunk(memory_id, "memory", &lang, content)
+        self.memory_fts.add_chunk(memory_id, "memory", &lang, fts_text(content))
     }
 
     /// Commit buffered FTS changes; failures are logged, SQLite stays the source of truth.
@@ -300,5 +310,19 @@ impl MemorySvc {
         let repo = MemoryRepository::new(conn);
         let n = repo.expire_stale()?;
         Ok(n)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fts_text_strips_the_user_template_prefix() {
+        assert_eq!(fts_text("User lives in Novi Sad"), "lives in Novi Sad");
+        assert_eq!(fts_text("Пользователь живёт в Нови-Саде"), "живёт в Нови-Саде");
+        assert_eq!(fts_text("User's MEMEX_URL is http://memex:8000"), "User's MEMEX_URL is http://memex:8000");
+        assert_eq!(fts_text("Prefers dark roast"), "Prefers dark roast");
+        assert_eq!(fts_text("Username is alex"), "Username is alex");
     }
 }
