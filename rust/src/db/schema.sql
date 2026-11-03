@@ -49,27 +49,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_jobs_checksum_active
     ON ingestion_jobs(checksum)
     WHERE status IN ('pending', 'processing');
 
+CREATE TABLE IF NOT EXISTS memory_sources (
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN ('explicit','conversation','document')),
+    checksum   TEXT NOT NULL UNIQUE,
+    text       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS memories (
-    id           TEXT PRIMARY KEY,
-    content      TEXT NOT NULL,
-    raw_input    TEXT NOT NULL,
-    source       TEXT NOT NULL,
-    is_active    INTEGER NOT NULL DEFAULT 1,
-    forget_after TEXT,
-    relation     TEXT,
-    parent_id    TEXT REFERENCES memories(id),
-    category     TEXT,
-    project      TEXT,
-    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    id               TEXT PRIMARY KEY,
+    content          TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    is_active        INTEGER NOT NULL DEFAULT 1,
+    forget_after     TEXT,
+    relation         TEXT,
+    parent_id        TEXT REFERENCES memories(id),
+    category         TEXT,
+    project          TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    source_id        TEXT REFERENCES memory_sources(id),
+    scope            TEXT NOT NULL DEFAULT 'default',
+    updated_at       TEXT,
+    last_accessed_at TEXT,
+    access_count     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_active ON memories(is_active, created_at)
     WHERE is_active = 1;
 
+CREATE TABLE IF NOT EXISTS profile_cache (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    fingerprint    TEXT NOT NULL,
+    static_summary TEXT NOT NULL,
+    dynamic_summary TEXT NOT NULL,
+    raw_count      INTEGER NOT NULL,
+    built_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS memory_extraction_jobs (
     id               TEXT PRIMARY KEY,
     source_ref       TEXT NOT NULL,
     source           TEXT NOT NULL,
+    scope            TEXT NOT NULL DEFAULT 'default',
     status           TEXT NOT NULL DEFAULT 'pending',
     facts_extracted  INTEGER NOT NULL DEFAULT 0,
     error            TEXT,

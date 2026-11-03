@@ -5,7 +5,6 @@ use uuid::Uuid;
 pub struct Memory {
     pub id: String,
     pub content: String,
-    pub raw_input: String,
     pub source: String,
     pub is_active: bool,
     pub forget_after: Option<String>,
@@ -29,7 +28,7 @@ impl<'a> MemoryRepository<'a> {
     pub fn create(
         &self,
         content: &str,
-        raw_input: &str,
+        _raw_input: &str,
         source: &str,
         forget_after: Option<&str>,
         relation: Option<&str>,
@@ -40,12 +39,11 @@ impl<'a> MemoryRepository<'a> {
         let id = Uuid::new_v4().to_string();
         self.conn.execute(
             "INSERT INTO memories
-                 (id, content, raw_input, source, forget_after, relation, parent_id, category, project)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 (id, content, source, source_id, forget_after, relation, parent_id, category, project)
+             VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, ?8)",
             params![
                 id,
                 content,
-                raw_input,
                 source,
                 forget_after,
                 relation,
@@ -67,7 +65,7 @@ impl<'a> MemoryRepository<'a> {
 
     pub fn get_by_id(&self, id: &str) -> rusqlite::Result<Option<Memory>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, content, raw_input, source, is_active, forget_after,
+            "SELECT id, content, source, is_active, forget_after,
                     relation, parent_id, category, project, created_at
              FROM memories WHERE id = ?1",
         )?;
@@ -81,7 +79,7 @@ impl<'a> MemoryRepository<'a> {
 
     pub fn get_all_active(&self) -> rusqlite::Result<Vec<Memory>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, content, raw_input, source, is_active, forget_after,
+            "SELECT id, content, source, is_active, forget_after,
                     relation, parent_id, category, project, created_at
              FROM memories
              WHERE is_active = 1
@@ -106,19 +104,18 @@ impl<'a> MemoryRepository<'a> {
     }
 
     fn row_to_memory(row: &rusqlite::Row<'_>) -> rusqlite::Result<Memory> {
-        let is_active_int: i64 = row.get(4)?;
+        let is_active_int: i64 = row.get(3)?;
         Ok(Memory {
             id: row.get(0)?,
             content: row.get(1)?,
-            raw_input: row.get(2)?,
-            source: row.get(3)?,
+            source: row.get(2)?,
             is_active: is_active_int != 0,
-            forget_after: row.get(5)?,
-            relation: row.get(6)?,
-            parent_id: row.get(7)?,
-            category: row.get(8)?,
-            project: row.get(9)?,
-            created_at: row.get(10)?,
+            forget_after: row.get(4)?,
+            relation: row.get(5)?,
+            parent_id: row.get(6)?,
+            category: row.get(7)?,
+            project: row.get(8)?,
+            created_at: row.get(9)?,
         })
     }
 }

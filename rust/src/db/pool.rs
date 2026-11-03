@@ -36,6 +36,7 @@ fn init_connection(conn: &mut Connection) -> rusqlite::Result<()> {
 
     // Apply schema (idempotent via IF NOT EXISTS)
     conn.execute_batch(SCHEMA)?;
+    super::migrations::migrate(conn)?;
 
     // Create sqlite-vec virtual tables for vectors
     conn.execute_batch(
