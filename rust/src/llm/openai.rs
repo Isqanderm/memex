@@ -5,25 +5,80 @@ use serde::{Deserialize, Serialize};
 
 use super::{LlmProvider, LlmResponse, TokenStream};
 
+const DEFAULT_URL: &str = "https://api.openai.com/v1/chat/completions";
+
 pub struct OpenAiProvider {
     client: reqwest::Client,
-    api_key: String,
+    api_key: Option<String>,
+    url: String,
     model: String,
     max_tokens: u32,
     temperature: f32,
 }
 
 impl OpenAiProvider {
-    pub fn new(api_key: String, model: String, max_tokens: u32, temperature: f32) -> Self {
+    pub fn new(
+        api_key: Option<String>,
+        base_url: Option<String>,
+        model: String,
+        max_tokens: u32,
+        temperature: f32,
+    ) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .build()
                 .expect("failed to build reqwest client"),
             api_key,
+            url: chat_completions_url(base_url.as_deref()),
             model,
             max_tokens,
             temperature,
+        }
+    }
+
+    fn request(&self, body: &OpenAiRequest<'_>) -> reqwest::RequestBuilder {
+        let mut req = self
+            .client
+            .post(&self.url)
+            .header("content-type", "application/json")
+            .json(body);
+        if let Some(key) = &self.api_key {
+            req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        req
+    }
+
+    async fn send(&self, body: OpenAiRequest<'_>) -> anyhow::Result<String> {
+        let resp = self
+            .request(&body)
+            .send()
+            .await
+            .context("OpenAI API request failed")?;
+
+        let status = resp.status();
+        let text = resp.text().await.context("reading OpenAI API response body")?;
+
+        if !status.is_success() {
+            let msg = serde_json::from_str::<OpenAiErrorResponse>(&text)
+                .map(|e| e.error.message)
+                .unwrap_or_else(|_| text.clone());
+            return Err(anyhow::anyhow!("OpenAI API error {status}: {msg}"));
+        }
+        Ok(text)
+    }
+}
+
+pub(crate) fn chat_completions_url(base_url: Option<&str>) -> String {
+    match base_url {
+        None => DEFAULT_URL.to_string(),
+        Some(base) => {
+            let base = base.trim_end_matches('/');
+            if base.ends_with("/chat/completions") {
+                base.to_string()
+            } else {
+                format!("{base}/chat/completions")
+            }
         }
     }
 }
@@ -38,6 +93,36 @@ struct OpenAiRequest<'a> {
     messages: Vec<OpenAiMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<ResponseFormat>,
+}
+
+impl<'a> OpenAiRequest<'a> {
+    fn new(
+        model: &'a str,
+        max_tokens: u32,
+        temperature: f32,
+        prompt: &'a str,
+        stream: bool,
+        json: bool,
+    ) -> Self {
+        Self {
+            model,
+            max_tokens,
+            temperature,
+            messages: vec![OpenAiMessage {
+                role: "user",
+                content: prompt,
+            }],
+            stream: stream.then_some(true),
+            response_format: json.then_some(ResponseFormat { r#type: "json_object" }),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ResponseFormat {
+    r#type: &'static str,
 }
 
 #[derive(Serialize)]
@@ -51,7 +136,7 @@ struct OpenAiMessage<'a> {
 #[derive(Deserialize)]
 struct OpenAiResponse {
     choices: Vec<OpenAiChoice>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     usage: OpenAiUsage,
 }
 
@@ -67,8 +152,18 @@ struct OpenAiMessageContent {
 
 #[derive(Deserialize, Default)]
 struct OpenAiUsage {
+    #[serde(default)]
     prompt_tokens: u32,
+    #[serde(default)]
     completion_tokens: u32,
+}
+
+fn null_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
 // ----- SSE streaming types -----
@@ -123,58 +218,41 @@ pub(crate) fn parse_response(json: &str) -> anyhow::Result<LlmResponse> {
 #[async_trait::async_trait]
 impl LlmProvider for OpenAiProvider {
     async fn complete(&self, prompt: &str) -> anyhow::Result<LlmResponse> {
-        let body = OpenAiRequest {
-            model: &self.model,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            messages: vec![OpenAiMessage {
-                role: "user",
-                content: prompt,
-            }],
-            stream: None,
-        };
+        let body = OpenAiRequest::new(
+            &self.model,
+            self.max_tokens,
+            self.temperature,
+            prompt,
+            false,
+            false,
+        );
+        parse_response(&self.send(body).await?)
+    }
 
-        let resp = self
-            .client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .context("OpenAI API request failed")?;
-
-        let status = resp.status();
-        let text = resp.text().await.context("reading OpenAI API response body")?;
-
-        if !status.is_success() {
-            let msg = serde_json::from_str::<OpenAiErrorResponse>(&text)
-                .map(|e| e.error.message)
-                .unwrap_or_else(|_| text.clone());
-            return Err(anyhow::anyhow!("OpenAI API error {status}: {msg}"));
-        }
-
-        parse_response(&text)
+    async fn complete_json(&self, prompt: &str) -> anyhow::Result<LlmResponse> {
+        let body = OpenAiRequest::new(
+            &self.model,
+            self.max_tokens,
+            self.temperature,
+            prompt,
+            false,
+            true,
+        );
+        parse_response(&self.send(body).await?)
     }
 
     async fn complete_stream(&self, prompt: &str) -> anyhow::Result<TokenStream> {
-        let body = OpenAiRequest {
-            model: &self.model,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            messages: vec![OpenAiMessage {
-                role: "user",
-                content: prompt,
-            }],
-            stream: Some(true),
-        };
+        let body = OpenAiRequest::new(
+            &self.model,
+            self.max_tokens,
+            self.temperature,
+            prompt,
+            true,
+            false,
+        );
 
         let resp = self
-            .client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("content-type", "application/json")
-            .json(&body)
+            .request(&body)
             .send()
             .await
             .context("OpenAI streaming API request failed")?;
@@ -288,5 +366,111 @@ mod tests {
     fn parse_openai_response_invalid_json() {
         let result = parse_response("not json");
         assert!(result.is_err());
+    }
+
+    use std::sync::{Arc, Mutex};
+
+    type Captured = Arc<Mutex<Option<(Option<String>, serde_json::Value)>>>;
+
+    async fn spawn_fake_openai() -> (String, Captured) {
+        use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+
+        let captured: Captured = Arc::new(Mutex::new(None));
+        let app = Router::new()
+            .route(
+                "/v1/chat/completions",
+                post(
+                    |State(cap): State<Captured>,
+                     headers: HeaderMap,
+                     Json(body): Json<serde_json::Value>| async move {
+                        let auth = headers
+                            .get("authorization")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
+                        *cap.lock().unwrap() = Some((auth, body));
+                        Json(serde_json::json!({
+                            "choices": [{"message": {"content": "{\"ok\":true}"}}]
+                        }))
+                    },
+                ),
+            )
+            .with_state(captured.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://127.0.0.1:{port}/v1"), captured)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn complete_json_hits_base_url_without_auth_header_when_no_key() {
+        let (base_url, captured) = spawn_fake_openai().await;
+        let p = OpenAiProvider::new(None, Some(base_url), "qwen".into(), 64, 0.0);
+        let r = p.complete_json("hi").await.unwrap();
+        assert_eq!(r.answer, "{\"ok\":true}");
+        let (auth, body) = captured.lock().unwrap().clone().unwrap();
+        assert!(auth.is_none());
+        assert_eq!(body["model"], "qwen");
+        assert_eq!(body["response_format"]["type"], "json_object");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn complete_sends_bearer_when_key_given() {
+        let (base_url, captured) = spawn_fake_openai().await;
+        let p = OpenAiProvider::new(Some("k1".into()), Some(base_url), "m".into(), 64, 0.0);
+        p.complete("hi").await.unwrap();
+        let (auth, body) = captured.lock().unwrap().clone().unwrap();
+        assert_eq!(auth.as_deref(), Some("Bearer k1"));
+        assert!(body.get("response_format").is_none());
+    }
+
+    #[test]
+    fn url_defaults_to_openai() {
+        assert_eq!(chat_completions_url(None), "https://api.openai.com/v1/chat/completions");
+    }
+
+    #[test]
+    fn url_joins_base_without_double_slash() {
+        assert_eq!(
+            chat_completions_url(Some("http://ollama:11434/v1/")),
+            "http://ollama:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            chat_completions_url(Some("http://ollama:11434/v1")),
+            "http://ollama:11434/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn url_keeps_full_path_if_already_given() {
+        assert_eq!(
+            chat_completions_url(Some("http://x/v1/chat/completions")),
+            "http://x/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn parse_openai_response_without_usage() {
+        let json = r#"{"choices": [{"message": {"content": "Hi"}}]}"#;
+        let r = parse_response(json).unwrap();
+        assert_eq!(r.answer, "Hi");
+        assert_eq!(r.input_tokens, 0);
+    }
+
+    #[test]
+    fn parse_openai_response_with_null_usage() {
+        let json = r#"{"choices": [{"message": {"content": "Hi"}}], "usage": null}"#;
+        assert_eq!(parse_response(json).unwrap().answer, "Hi");
+    }
+
+    #[test]
+    fn json_request_body_has_response_format() {
+        let body = OpenAiRequest::new("m", 10, 0.1, "p", false, true);
+        let v = serde_json::to_value(&body).unwrap();
+        assert_eq!(v["response_format"]["type"], "json_object");
+        let body = OpenAiRequest::new("m", 10, 0.1, "p", false, false);
+        let v = serde_json::to_value(&body).unwrap();
+        assert!(v.get("response_format").is_none());
     }
 }

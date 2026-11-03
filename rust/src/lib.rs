@@ -12,3 +12,4 @@ pub mod ingestion;
 pub mod llm;
 pub mod memory;
 pub mod api;
+pub mod mcp;

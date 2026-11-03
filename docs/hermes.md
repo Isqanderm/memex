@@ -4,6 +4,8 @@ Connect Memex to a running Hermes agent as a persistent memory MCP server.
 
 **What you get:** tools `mcp_memex_context`, `mcp_memex_remember`, `mcp_memex_recall`, `mcp_memex_observe`, `mcp_memex_memories`, `mcp_memex_index_file`, `mcp_memex_check_indexing`, `mcp_memex_list_memories`, `mcp_memex_forget` available to your Hermes agent.
 
+On the Rust edition (HTTP `/mcp`) there is no `index_file`/`list_memories`: use `index_text` (content + title) instead of `index_file`, `list_documents` instead of `list_memories`, plus `delete_document`. See "Rust (HTTP) tool names" in the memex skill.
+
 **Session protocol:** call `mcp_memex_context` at session start to inject user profile; call `mcp_memex_observe` at session end to extract new facts from the conversation.
 
 ## Prerequisites
@@ -143,6 +145,15 @@ mcp_servers:
       MEMEX_URL: http://memex:8000
     timeout: 120
     connect_timeout: 60
+```
+
+**Rust edition:** the server speaks MCP over HTTP itself, so no bridge is needed. Use this block instead (tools: `context`, `remember`, `recall`, `observe`, `memories`, `index_text`, `check_indexing`, `list_documents`, `forget`, `delete_document`):
+
+```yaml
+mcp_servers:
+  memex:
+    url: http://memex:8000/mcp
+    transport: streamable-http
 ```
 
 > **Common mistake:** accidentally nesting `memex:` inside another section (e.g. `web:`) due to wrong indentation. Double-check the YAML level.

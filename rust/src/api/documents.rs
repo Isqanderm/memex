@@ -8,11 +8,14 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use rusqlite::Connection;
 use tracing::info;
 
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
 use crate::error::AppError;
+use crate::search::tantivy_fts::TantivyStore;
+use crate::search::vectors::VectorStore;
 
 use super::state::AppState;
 
@@ -43,6 +46,141 @@ pub fn router() -> Router<AppState> {
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
 }
 
+/// Longest stem kept in a stored upload name (chars; also capped at `MAX_STEM_BYTES`).
+const MAX_STEM_CHARS: usize = 100;
+/// Byte cap for the stem so `<16 hex>-<stem>.<ext>` stays well under the 255-byte name limit.
+const MAX_STEM_BYTES: usize = 200;
+
+/// Turns a client-supplied file name into a safe single path segment.
+///
+/// `/`, `\` and control characters become `_`, leading dots are stripped (no `..`, no
+/// hidden files), the stem is cut to 100 chars / 200 bytes, an empty stem becomes
+/// `untitled`. A short alphanumeric extension (`.pdf`, `.md`) is kept as is.
+pub(crate) fn safe_upload_name(filename: &str) -> String {
+    let filename = filename.trim();
+    let (stem, ext) = match filename.rsplit_once('.') {
+        Some((stem, ext))
+            if (1..=10).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphanumeric()) =>
+        {
+            (stem, Some(ext))
+        }
+        _ => (filename, None),
+    };
+
+    let cleaned: String = stem
+        .chars()
+        .map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c })
+        .collect();
+    let mut out = String::new();
+    for c in cleaned.trim_start_matches('.').trim().chars().take(MAX_STEM_CHARS) {
+        if out.len() + c.len_utf8() > MAX_STEM_BYTES {
+            break;
+        }
+        out.push(c);
+    }
+    if out.is_empty() {
+        out.push_str("untitled");
+    }
+    match ext {
+        Some(ext) => format!("{out}.{ext}"),
+        None => out,
+    }
+}
+
+/// Stores `bytes` as `<upload_dir>/<sha256[..16]>-<safe filename>` and creates an ingestion job.
+///
+/// Short-circuits with `already_indexed` / `already_queued` when the checksum is known.
+/// Shared by the HTTP upload handler and the MCP `index_text` tool.
+pub(crate) fn enqueue_upload(
+    conn: &Connection,
+    upload_dir: &str,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<UploadResponse, AppError> {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let checksum = hex::encode(hasher.finalize());
+
+    let doc_repo = DocumentRepository::new(conn);
+    let job_repo = JobRepository::new(conn);
+
+    // Check if already indexed
+    if let Some(doc) = doc_repo.get_by_checksum(&checksum).map_err(AppError::Db)? {
+        return Ok(UploadResponse {
+            job_id: None,
+            doc_id: Some(doc.id),
+            status: "already_indexed".to_string(),
+        });
+    }
+
+    // Check if already queued
+    if let Some(job) = job_repo
+        .get_by_checksum_active(&checksum)
+        .map_err(AppError::Db)?
+    {
+        return Ok(UploadResponse {
+            job_id: Some(job.id),
+            doc_id: None,
+            status: "already_queued".to_string(),
+        });
+    }
+
+    // Save file to upload directory — prefix with checksum to avoid filename collisions
+    std::fs::create_dir_all(upload_dir)?;
+    let unique_name = format!("{}-{}", &checksum[..16], safe_upload_name(filename));
+    let dest_path: PathBuf = PathBuf::from(upload_dir).join(&unique_name);
+    std::fs::write(&dest_path, bytes)?;
+
+    let source = dest_path.to_string_lossy().to_string();
+
+    // Create ingestion job
+    let job_id = job_repo.create(&source, &checksum).map_err(AppError::Db)?;
+
+    Ok(UploadResponse {
+        job_id: Some(job_id),
+        doc_id: None,
+        status: "pending".to_string(),
+    })
+}
+
+/// Removes a document from the vector store, the Tantivy index and the DB.
+///
+/// Returns `AppError::NotFound` when the document does not exist.
+/// Shared by the HTTP delete handler and the MCP `delete_document` tool.
+pub(crate) fn delete_document_by_id(
+    conn: &Connection,
+    tantivy: &TantivyStore,
+    vectors: &VectorStore,
+    doc_id: &str,
+) -> Result<(), AppError> {
+    let doc_repo = DocumentRepository::new(conn);
+
+    // Check document exists
+    doc_repo
+        .get_by_id(doc_id)
+        .map_err(AppError::Db)?
+        .ok_or_else(|| AppError::NotFound(format!("document {doc_id}")))?;
+
+    // Remove chunk vectors
+    vectors
+        .delete_chunks_for_doc(conn, doc_id)
+        .map_err(AppError::Db)?;
+
+    // Remove from tantivy (then commit)
+    tantivy
+        .delete_by_doc_id(doc_id)
+        .map_err(|e| AppError::Parse(e.to_string()))?;
+    tantivy
+        .commit()
+        .map_err(|e| AppError::Parse(e.to_string()))?;
+
+    // Delete from DB (CASCADE removes chunks)
+    doc_repo.delete(doc_id).map_err(AppError::Db)?;
+
+    info!(doc_id = %doc_id, "Deleted document");
+    Ok(())
+}
+
 async fn upload_document(
     State(state): State<AppState>,
     mut multipart: Multipart,
@@ -69,66 +207,21 @@ async fn upload_document(
         .await
         .map_err(|e| AppError::BadRequest(format!("failed to read upload bytes: {e}")))?;
 
-    // Compute SHA256 checksum
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    let checksum = hex::encode(hasher.finalize());
-
     let pool = state.pool.clone();
     let upload_dir = state.config.upload_dir.clone();
-    let filename_clone = filename.clone();
-    let content_type_clone = content_type.clone();
-    let bytes_clone = bytes.clone();
 
     let response = tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(AppError::Pool)?;
-        let doc_repo = DocumentRepository::new(&conn);
-        let job_repo = JobRepository::new(&conn);
-
-        // Check if already indexed
-        if let Some(doc) = doc_repo.get_by_checksum(&checksum).map_err(AppError::Db)? {
-            return Ok::<UploadResponse, AppError>(UploadResponse {
-                job_id: None,
-                doc_id: Some(doc.id),
-                status: "already_indexed".to_string(),
-            });
+        let response = enqueue_upload(&conn, &upload_dir, &filename, &bytes)?;
+        if response.status == "pending" {
+            info!(
+                job_id = %response.job_id.as_deref().unwrap_or_default(),
+                filename = %filename,
+                mime = %content_type,
+                "Created ingestion job"
+            );
         }
-
-        // Check if already queued
-        if let Some(job) = job_repo
-            .get_by_checksum_active(&checksum)
-            .map_err(AppError::Db)?
-        {
-            return Ok(UploadResponse {
-                job_id: Some(job.id),
-                doc_id: None,
-                status: "already_queued".to_string(),
-            });
-        }
-
-        // Save file to upload directory — prefix with checksum to avoid filename collisions
-        std::fs::create_dir_all(&upload_dir)?;
-        let unique_name = format!("{}-{}", &checksum[..16], &filename_clone);
-        let dest_path: PathBuf = PathBuf::from(&upload_dir).join(&unique_name);
-        std::fs::write(&dest_path, &bytes_clone)?;
-
-        let source = dest_path.to_string_lossy().to_string();
-
-        // Create ingestion job
-        let job_id = job_repo.create(&source, &checksum).map_err(AppError::Db)?;
-
-        info!(
-            job_id = %job_id,
-            filename = %filename_clone,
-            mime = %content_type_clone,
-            "Created ingestion job"
-        );
-
-        Ok(UploadResponse {
-            job_id: Some(job_id),
-            doc_id: None,
-            status: "pending".to_string(),
-        })
+        Ok::<UploadResponse, AppError>(response)
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
@@ -175,32 +268,7 @@ async fn delete_document(
 
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
-        let doc_repo = DocumentRepository::new(&conn);
-
-        // Check document exists
-        let _doc = doc_repo
-            .get_by_id(&doc_id_clone)
-            .map_err(AppError::Db)?
-            .ok_or_else(|| AppError::NotFound(format!("document {doc_id_clone}")))?;
-
-        // Remove chunk vectors
-        vectors
-            .delete_chunks_for_doc(&conn, &doc_id_clone)
-            .map_err(AppError::Db)?;
-
-        // Remove from tantivy (then commit)
-        tantivy
-            .delete_by_doc_id(&doc_id_clone)
-            .map_err(|e| AppError::Parse(e.to_string()))?;
-        tantivy
-            .commit()
-            .map_err(|e| AppError::Parse(e.to_string()))?;
-
-        // Delete from DB (CASCADE removes chunks)
-        doc_repo.delete(&doc_id_clone).map_err(AppError::Db)?;
-
-        info!(doc_id = %doc_id_clone, "Deleted document");
-        Ok(())
+        delete_document_by_id(&conn, &tantivy, &vectors, &doc_id_clone)
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
@@ -323,6 +391,32 @@ async fn update_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn safe_upload_name_neutralizes_paths() {
+        assert_eq!(safe_upload_name("../../etc/passwd"), "_.._etc_passwd");
+        assert_eq!(safe_upload_name("../mcp smoke.md"), "_mcp smoke.md");
+        assert_eq!(safe_upload_name("..\\evil.pdf"), "_evil.pdf");
+        assert_eq!(safe_upload_name("notes\nx.txt"), "notes_x.txt");
+        assert_eq!(safe_upload_name(".hidden"), "untitled.hidden");
+        assert_eq!(safe_upload_name("..."), "untitled");
+        assert_eq!(safe_upload_name("  "), "untitled");
+        assert_eq!(safe_upload_name(".md"), "untitled.md");
+        assert_eq!(safe_upload_name("Report 2026.pdf"), "Report 2026.pdf");
+        assert_eq!(safe_upload_name("archive.tar.gz"), "archive.tar.gz");
+        assert_eq!(safe_upload_name("upload"), "upload");
+    }
+
+    #[test]
+    fn safe_upload_name_truncates_long_stems() {
+        let long = format!("{}.md", "a".repeat(300));
+        assert_eq!(safe_upload_name(&long), format!("{}.md", "a".repeat(100)));
+        // 3-byte chars: the byte cap (200) wins over the char cap (100).
+        let cjk = format!("{}.pdf", "文".repeat(150));
+        let name = safe_upload_name(&cjk);
+        assert_eq!(name, format!("{}.pdf", "文".repeat(66)));
+        assert!(name.len() + 17 <= 255);
+    }
 
     #[test]
     fn upload_response_serializes() {

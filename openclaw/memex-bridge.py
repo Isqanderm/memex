@@ -20,6 +20,9 @@ Add to ~/.openclaw/openclaw.json under "mcp" -> "servers":
     }
   }
 
+Rust edition (MCP over HTTP, no bridge needed), same place:
+  "memex": { "url": "http://memex:8000/mcp", "transport": "streamable-http" }
+
 Tools: context, remember, recall, observe, memories,
        index_file, check_indexing, list_memories, forget
 """

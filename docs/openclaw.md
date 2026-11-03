@@ -4,6 +4,8 @@ Connect Memex to a running OpenClaw gateway as a persistent memory MCP server.
 
 **What you get:** tools `mcp_memex_context`, `mcp_memex_remember`, `mcp_memex_recall`, `mcp_memex_observe`, `mcp_memex_memories`, `mcp_memex_index_file`, `mcp_memex_check_indexing`, `mcp_memex_list_memories`, `mcp_memex_forget` available to your OpenClaw agent.
 
+On the Rust edition (HTTP `/mcp`) there is no `index_file`/`list_memories`: use `index_text` (content + title) instead of `index_file`, `list_documents` instead of `list_memories`, plus `delete_document`. See "Rust (HTTP) tool names" in the memex skill.
+
 **Session protocol:** call `mcp_memex_context` at session start to inject user profile; call `mcp_memex_observe` at session end to extract new facts from the conversation.
 
 ## Prerequisites
@@ -154,6 +156,12 @@ Edit `~/.openclaw/openclaw.json` (or `/home/node/.openclaw/openclaw.json` inside
     }
   }
 }
+```
+
+**Rust edition:** the server speaks MCP over HTTP itself, so no bridge is needed. Use this entry instead:
+
+```json
+"memex": { "url": "http://memex:8000/mcp", "transport": "streamable-http" }
 ```
 
 > **Common mistake:** accidentally creating a new top-level `"mcp"` key when one already exists — merge into the existing `"mcp"` object, don't duplicate it.

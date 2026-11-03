@@ -45,18 +45,12 @@ jobs:
         run: |
           cp rust/target/release/memex ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
-          MCP_ARTIFACT=$(echo "${{ matrix.artifact }}" | sed 's/^memex-/memex-mcp-/')
-          cp rust/target/release/memex-mcp $MCP_ARTIFACT
-          chmod +x $MCP_ARTIFACT
-          echo "MCP_ARTIFACT=$MCP_ARTIFACT" >> $GITHUB_ENV
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            ${{ matrix.artifact }}
-            ${{ env.MCP_ARTIFACT }}
+          path: ${{ matrix.artifact }}
 
   release:
     name: GitHub Release
@@ -100,11 +94,9 @@ jobs:
           body: ${{ steps.changelog.outputs.body }}
           files: |
             artifacts/memex-linux-amd64/memex-linux-amd64
-            artifacts/memex-linux-amd64/memex-mcp-linux-amd64
             artifacts/memex-linux-arm64/memex-linux-arm64
-            artifacts/memex-linux-arm64/memex-mcp-linux-arm64
           tag_name: ${{ github.ref_name }}
 
-  # Docker image intentionally omitted — the Rust edition ships as a standalone binary.
-  # Users deploy via the pre-built binary (memex-linux-amd64 / memex-linux-arm64),
-  # not Docker. See docs/rust.md for installation instructions.
+  # The Docker image (models baked in, used for Coolify / docker-compose.rust.yml) is
+  # built by docker.yml (job `rust-image`) on the same `rust/v*` tag and pushed as
+  # ghcr.io/isqanderm/memex:rust-<version>. MCP is served by the main binary at /mcp.

@@ -16,8 +16,8 @@
 
 | | Python | Rust |
 |---|---|---|
-| **Best for** | Full-featured, scalable | Low-RAM servers, Raspberry Pi |
-| **RAM** | ~2.5 GB | ~80–120 MB |
+| **Best for** | Full-featured, scalable | Single binary, no PostgreSQL; needs ≥3 GB RAM |
+| **RAM** | ~2.5 GB | ~2.3 GiB (both ONNX models loaded), min 3 GB |
 | **Dependencies** | Docker + PostgreSQL | Single binary |
 | **Quick start** | `docker compose up` | `./memex` |
 | **Docs** | This file | [docs/rust.md](docs/rust.md) |
@@ -121,26 +121,15 @@ Add to `.claude/settings.json`:
 
 **Document tools:** `index_file` · `check_indexing` · `list_memories`
 
-#### Rust version (memex-mcp)
+#### Rust version
 
-```json
-{
-  "mcpServers": {
-    "memex": {
-      "command": "/absolute/path/to/memex-mcp",
-      "env": {
-        "DATABASE_PATH": "/path/to/data/memex.db",
-        "TANTIVY_PATH": "/path/to/data/tantivy",
-        "LLM_PROVIDER": "openai",
-        "LLM_MODEL": "gpt-4o-mini",
-        "OPENAI_LLM_API_KEY": "sk-..."
-      }
-    }
-  }
-}
+The Rust edition serves MCP over HTTP from the main server:
+
+```bash
+claude mcp add --transport http memex http://localhost:8000/mcp
 ```
 
-`memex-mcp` is distributed alongside `memex` in each GitHub Release.
+Tools: `remember` · `recall` · `forget` · `context` · `observe` · `memories` · `index_text` · `check_indexing` · `list_documents` · `delete_document`. See [docs/rust.md](docs/rust.md#mcp-over-http).
 
 ## Hermes Integration
 
