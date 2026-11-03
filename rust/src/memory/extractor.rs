@@ -58,8 +58,7 @@ impl FactExtractor {
 
     pub async fn extract_facts(&self, text: &str) -> anyhow::Result<Vec<ExtractedFact>> {
         let prompt = EXTRACT_PROMPT.replace("{text}", text);
-        let response = self.llm.complete(&prompt).await?;
-        Ok(parse_facts_json(&response.answer).unwrap_or_default())
+        self.complete_and_parse(&prompt, "facts", parse_facts_json).await
     }
 
     pub async fn resolve_relations(
@@ -75,8 +74,34 @@ impl FactExtractor {
         let prompt = RESOLVE_PROMPT
             .replace("{new_fact}", new_fact)
             .replace("{existing}", &existing_str);
-        let response = self.llm.complete(&prompt).await?;
-        Ok(parse_relations_json(&response.answer).unwrap_or_default())
+        self.complete_and_parse(&prompt, "relations", parse_relations_json)
+            .await
+    }
+
+    /// Call the LLM in JSON mode and parse; retry once if no parseable JSON came back.
+    /// After the second failure, log a warning and return an empty result.
+    async fn complete_and_parse<T>(
+        &self,
+        prompt: &str,
+        what: &str,
+        parse: fn(&str) -> anyhow::Result<Vec<T>>,
+    ) -> anyhow::Result<Vec<T>> {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let response = self.llm.complete_json(prompt).await?;
+            match parse(&response.answer) {
+                Ok(items) => return Ok(items),
+                Err(e) if attempt >= 2 => {
+                    let head: String = response.answer.chars().take(200).collect();
+                    tracing::warn!(
+                        "memory extractor: unparseable {what} response after {attempt} attempts ({e}): {head}"
+                    );
+                    return Ok(vec![]);
+                }
+                Err(_) => continue,
+            }
+        }
     }
 }
 
@@ -94,13 +119,10 @@ fn extract_json(s: &str) -> Option<&str> {
 pub fn parse_facts_json(raw: &str) -> anyhow::Result<Vec<ExtractedFact>> {
     let json_str = match extract_json(raw) {
         Some(s) => s,
-        None => return Ok(vec![]),
+        None => anyhow::bail!("no JSON object found in LLM response"),
     };
 
-    let value: serde_json::Value = match serde_json::from_str(json_str) {
-        Ok(v) => v,
-        Err(_) => return Ok(vec![]),
-    };
+    let value: serde_json::Value = serde_json::from_str(json_str)?;
 
     let facts_arr = match value.get("facts").and_then(|v| v.as_array()) {
         Some(arr) => arr,
@@ -145,13 +167,10 @@ pub fn parse_facts_json(raw: &str) -> anyhow::Result<Vec<ExtractedFact>> {
 pub fn parse_relations_json(raw: &str) -> anyhow::Result<Vec<RelationResult>> {
     let json_str = match extract_json(raw) {
         Some(s) => s,
-        None => return Ok(vec![]),
+        None => anyhow::bail!("no JSON object found in LLM response"),
     };
 
-    let value: serde_json::Value = match serde_json::from_str(json_str) {
-        Ok(v) => v,
-        Err(_) => return Ok(vec![]),
-    };
+    let value: serde_json::Value = serde_json::from_str(json_str)?;
 
     let relations_arr = match value.get("relations").and_then(|v| v.as_array()) {
         Some(arr) => arr,
@@ -180,6 +199,64 @@ pub fn parse_relations_json(raw: &str) -> anyhow::Result<Vec<RelationResult>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::{LlmResponse, TokenStream};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    struct ScriptedLlm {
+        answers: Mutex<Vec<&'static str>>,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for ScriptedLlm {
+        async fn complete(&self, _p: &str) -> anyhow::Result<LlmResponse> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let a = self.answers.lock().unwrap().remove(0);
+            Ok(LlmResponse { answer: a.into(), input_tokens: 0, output_tokens: 0 })
+        }
+        async fn complete_stream(&self, _p: &str) -> anyhow::Result<TokenStream> {
+            unimplemented!()
+        }
+    }
+
+    #[tokio::test]
+    async fn extract_retries_once_on_garbage_then_parses() {
+        let llm = Arc::new(ScriptedLlm {
+            answers: Mutex::new(vec![
+                "sorry, no json",
+                "Here you go:\n{\"facts\":[{\"content\":\"User uses Rust\"}]}\nDone.",
+            ]),
+            calls: AtomicUsize::new(0),
+        });
+        let ex = FactExtractor::new(llm.clone());
+        let facts = ex.extract_facts("I use Rust").await.unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].content, "User uses Rust");
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn extract_gives_up_after_second_garbage() {
+        let llm = Arc::new(ScriptedLlm {
+            answers: Mutex::new(vec!["nope", "still nope"]),
+            calls: AtomicUsize::new(0),
+        });
+        let facts = FactExtractor::new(llm.clone()).extract_facts("x").await.unwrap();
+        assert!(facts.is_empty());
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn extract_does_not_retry_on_valid_empty_list() {
+        let llm = Arc::new(ScriptedLlm {
+            answers: Mutex::new(vec![r#"{"facts":[]}"#]),
+            calls: AtomicUsize::new(0),
+        });
+        let facts = FactExtractor::new(llm.clone()).extract_facts("x").await.unwrap();
+        assert!(facts.is_empty());
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn parse_facts_from_json() {
@@ -195,8 +272,7 @@ mod tests {
 
     #[test]
     fn parse_facts_handles_invalid_json() {
-        let facts = parse_facts_json("not json at all").unwrap();
-        assert!(facts.is_empty());
+        assert!(parse_facts_json("not json at all").is_err());
     }
 
     #[test]
@@ -231,7 +307,6 @@ mod tests {
 
     #[test]
     fn parse_relations_handles_invalid_json() {
-        let rels = parse_relations_json("garbage {{}").unwrap();
-        assert!(rels.is_empty());
+        assert!(parse_relations_json("garbage {{}").is_err());
     }
 }
