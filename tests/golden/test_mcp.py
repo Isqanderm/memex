@@ -33,6 +33,14 @@ class TestMcpContract:
         assert not res.isError
 
     @pytest.mark.asyncio
+    async def test_recall_returns_text_without_error(self, base_url: str) -> None:
+        async with streamable_http_client(f"{base_url}/mcp") as (r, w, _):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                res = await s.call_tool("recall", {"query": "rust"})
+        assert not res.isError
+
+    @pytest.mark.asyncio
     async def test_host_header_memex_is_accepted(self, base_url: str) -> None:
         import httpx
         body = {"jsonrpc": "2.0", "id": 1, "method": "initialize",

@@ -20,9 +20,11 @@ pub struct MemoryHit {
     pub project: Option<String>,
     pub scope: String,
     pub created_at: String,
+    pub access_count: i64,
 }
 
 /// Hybrid retrieval of memory facts: sqlite-vec ∪ tantivy BM25, fused with RRF.
+#[derive(Clone)]
 pub struct MemorySearch {
     /// Minimum cosine similarity for a vector hit.
     pub retrieval_similarity: f32,
@@ -102,6 +104,7 @@ impl MemorySearch {
                 project: memory.project,
                 scope: memory.scope,
                 created_at: memory.created_at,
+                access_count: memory.access_count,
             });
             if results.len() >= self.top_k {
                 break;

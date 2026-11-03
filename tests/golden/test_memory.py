@@ -93,6 +93,11 @@ class TestMemoryContract:
         ids_after = {m["id"] for m in items_after}
         assert memory_id not in ids_after, f"Memory {memory_id} still present after delete"
 
+    def test_memory_search_shape(self, client: httpx.Client) -> None:
+        resp = client.post("/api/memory/search", json={"query": "anything"})
+        assert resp.status_code == 200
+        assert isinstance(resp.json()["hits"], list)
+
     def test_delete_nonexistent_memory_returns_404(self, client: httpx.Client) -> None:
         resp = client.delete("/api/memory/nonexistent-id-00000000")
         assert resp.status_code in (400, 404, 422)

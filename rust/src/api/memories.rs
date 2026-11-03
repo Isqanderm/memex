@@ -2,10 +2,12 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::db::repositories::memories::{Memory, MemoryRepository};
 use crate::error::AppError;
+use crate::search::memory_search::{MemoryHit, MemorySearch};
 
 use super::state::AppState;
 
@@ -44,6 +46,66 @@ pub struct ContextQuery {
     pub scope: Option<String>,
 }
 
+/// Body of `POST /api/memory/search` (also the parameters of the MCP `recall` tool).
+#[derive(Deserialize)]
+pub struct SearchRequest {
+    pub query: String,
+    pub scope: Option<String>,
+    pub category: Option<String>,
+    #[serde(default = "default_top_k")]
+    pub top_k: usize,
+}
+
+fn default_top_k() -> usize {
+    10
+}
+
+#[derive(Serialize)]
+pub struct SearchHitItem {
+    pub id: String,
+    pub content: String,
+    pub score: f32,
+    pub scope: String,
+    pub category: Option<String>,
+    pub project: Option<String>,
+    pub source: String,
+    pub created_at: String,
+    pub access_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct SearchResponse {
+    pub hits: Vec<SearchHitItem>,
+}
+
+/// Hybrid memory search without an LLM; records the access of every returned fact.
+pub(crate) fn search_memories(
+    state: &AppState,
+    conn: &Connection,
+    q: &SearchRequest,
+) -> anyhow::Result<Vec<MemoryHit>> {
+    let retrieval = &state.retrieval;
+    let query_vector = state.embed.embed_query(&q.query)?;
+    let lang = retrieval.lang.detect(&q.query);
+    let search = MemorySearch {
+        top_k: q.top_k,
+        ..retrieval.memory_search.clone()
+    };
+    let hits = search.search(
+        conn,
+        &state.vectors,
+        &state.memory_fts,
+        &q.query,
+        &query_vector,
+        &lang,
+        q.scope.as_deref(),
+        q.category.as_deref(),
+    )?;
+    let ids: Vec<String> = hits.iter().map(|h| h.memory_id.clone()).collect();
+    MemoryRepository::new(conn).touch_accessed(&ids)?;
+    Ok(hits)
+}
+
 #[derive(Serialize)]
 pub struct RememberResponse {
     pub facts_extracted: usize,
@@ -76,6 +138,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/memory/remember", post(remember_handler))
         .route("/api/memory/observe", post(observe_handler))
+        .route("/api/memory/search", post(search_handler))
         .route("/api/memory/list", get(list_memories_handler))
         .route("/api/memory/context", get(context_handler))
         .route("/api/memory/:id", delete(forget_handler))
@@ -127,6 +190,35 @@ async fn observe_handler(
     Ok(Json(RememberResponse {
         facts_extracted: result.facts_extracted,
         memories_updated: result.memories_updated,
+    }))
+}
+
+async fn search_handler(
+    State(state): State<AppState>,
+    Json(body): Json<SearchRequest>,
+) -> Result<Json<SearchResponse>, AppError> {
+    let hits = tokio::task::spawn_blocking(move || {
+        let conn = state.pool.get().map_err(AppError::Pool)?;
+        search_memories(&state, &conn, &body).map_err(|e| AppError::Llm(e.to_string()))
+    })
+    .await
+    .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;
+
+    Ok(Json(SearchResponse {
+        hits: hits
+            .into_iter()
+            .map(|h| SearchHitItem {
+                id: h.memory_id,
+                content: h.content,
+                score: h.score,
+                scope: h.scope,
+                category: h.category,
+                project: h.project,
+                source: h.source,
+                created_at: h.created_at,
+                access_count: h.access_count,
+            })
+            .collect(),
     }))
 }
 

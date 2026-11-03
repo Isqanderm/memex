@@ -16,6 +16,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::api::documents::{delete_document_by_id, enqueue_upload};
+use crate::api::memories::{search_memories, SearchRequest};
 use crate::api::state::AppState;
 use crate::db::repositories::documents::DocumentRepository;
 use crate::db::repositories::jobs::JobRepository;
@@ -40,8 +41,12 @@ pub struct RememberParams {
 pub struct RecallParams {
     /// Query text.
     pub query: String,
+    /// Optional memory scope filter.
+    pub scope: Option<String>,
     /// Optional memory category filter.
     pub category: Option<String>,
+    /// Maximum number of facts to return (default 10).
+    pub top_k: Option<usize>,
 }
 
 /// Parameters for the `observe` tool.
@@ -165,41 +170,43 @@ impl MemexMcp {
         ))
     }
 
-    #[tool(description = "Search memories and documents using RAG pipeline. Returns an LLM-synthesized answer with sources.")]
+    #[tool(description = "Search personal memory facts. Returns matching facts with score, scope, category and date; no LLM involved. Use /api/query for synthesized answers.")]
     pub async fn recall(
         &self,
         Parameters(p): Parameters<RecallParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let retrieval = self.state.retrieval.clone();
-        let result = self
+        let state = self.state.clone();
+        let req = SearchRequest {
+            query: p.query,
+            scope: p.scope,
+            category: p.category,
+            top_k: p.top_k.unwrap_or(10),
+        };
+        let hits = self
             .with_conn(move |conn| {
-                retrieval
-                    .query(conn, &p.query, p.category.as_deref())
-                    .map_err(|e| AppError::Llm(e.to_string()))
+                search_memories(&state, conn, &req).map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
             .map_err(internal)?;
 
-        let mut out = result.answer;
-        let mut seen = HashSet::new();
-        let mut refs = Vec::new();
-        for s in &result.sources {
-            let doc_id = s.get("doc_id").and_then(|v| v.as_str()).unwrap_or("");
-            if !seen.insert(doc_id.to_string()) {
-                continue;
-            }
-            let title = s
-                .get("title")
-                .or_else(|| s.get("filename"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("source");
-            refs.push(format!("  - {title}"));
+        if hits.is_empty() {
+            return ok_text("No matching memories.".to_string());
         }
-        if !refs.is_empty() {
-            out.push_str("\n\nSources:\n");
-            out.push_str(&refs.join("\n"));
-        }
-        ok_text(out)
+        let lines: Vec<String> = hits
+            .iter()
+            .map(|h| {
+                format!(
+                    "- [{}|{}|{}] {} (id: {}, score: {:.3})",
+                    h.category.as_deref().unwrap_or("-"),
+                    h.scope,
+                    h.created_at.get(..10).unwrap_or(&h.created_at),
+                    h.content,
+                    h.memory_id,
+                    h.score
+                )
+            })
+            .collect();
+        ok_text(lines.join("\n"))
     }
 
     #[tool(description = "Deactivate (soft-delete) a memory by its ID.")]

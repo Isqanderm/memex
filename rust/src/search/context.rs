@@ -172,6 +172,7 @@ mod tests {
             project: None,
             scope: "default".to_string(),
             created_at: "2026-01-15T10:00:00".to_string(),
+            access_count: 0,
         };
         let ctx = builder.build("Where does the user live?", &[], &[mem_hit], "2026-06-04");
 
