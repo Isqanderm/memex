@@ -14,6 +14,12 @@ pub struct RememberRequest {
     pub content: String,
     #[serde(default = "default_source")]
     pub source: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
+}
+
+fn default_scope() -> String {
+    "default".to_string()
 }
 
 fn default_source() -> String {
@@ -23,11 +29,19 @@ fn default_source() -> String {
 #[derive(Deserialize)]
 pub struct ObserveRequest {
     pub conversation: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
 }
 
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub category: Option<String>,
+    pub scope: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ContextQuery {
+    pub scope: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -45,6 +59,8 @@ pub struct MemoryItem {
     pub project: Option<String>,
     pub relation: Option<String>,
     pub created_at: String,
+    pub scope: String,
+    pub access_count: i64,
 }
 
 #[derive(Serialize)]
@@ -73,11 +89,12 @@ async fn remember_handler(
     let memory_svc = state.memory_svc.clone();
     let content = body.content.clone();
     let source = body.source.clone();
+    let scope = body.scope.clone();
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(AppError::Pool)?;
         tokio::runtime::Handle::current()
-            .block_on(async move { memory_svc.remember(&conn, &content, &source).await })
+            .block_on(async move { memory_svc.remember(&conn, &content, &source, &scope).await })
             .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
@@ -96,11 +113,12 @@ async fn observe_handler(
     let pool = state.pool.clone();
     let memory_svc = state.memory_svc.clone();
     let conversation = body.conversation.clone();
+    let scope = body.scope.clone();
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get().map_err(AppError::Pool)?;
         tokio::runtime::Handle::current()
-            .block_on(async move { memory_svc.observe(&conn, &conversation).await })
+            .block_on(async move { memory_svc.observe(&conn, &conversation, &scope).await })
             .map_err(|e| AppError::Llm(e.to_string()))
     })
     .await
@@ -118,11 +136,12 @@ async fn list_memories_handler(
 ) -> Result<Json<Vec<MemoryItem>>, AppError> {
     let pool = state.pool.clone();
     let category = params.category.clone();
+    let scope = params.scope.clone();
 
     let memories = tokio::task::spawn_blocking(move || -> Result<Vec<Memory>, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
         let repo = MemoryRepository::new(&conn);
-        let all = repo.get_all_active().map_err(AppError::Db)?;
+        let all = repo.get_all_active(scope.as_deref()).map_err(AppError::Db)?;
 
         // Filter by category if provided
         if let Some(cat) = &category {
@@ -147,6 +166,8 @@ async fn list_memories_handler(
             project: m.project,
             relation: m.relation,
             created_at: m.created_at,
+            scope: m.scope,
+            access_count: m.access_count,
         })
         .collect();
 
@@ -155,14 +176,16 @@ async fn list_memories_handler(
 
 async fn context_handler(
     State(state): State<AppState>,
+    Query(params): Query<ContextQuery>,
 ) -> Result<Json<ProfileResponse>, AppError> {
     let pool = state.pool.clone();
+    let scope = params.scope.clone();
 
     // Get all active memories (blocking)
     let memories = tokio::task::spawn_blocking(move || -> Result<Vec<Memory>, AppError> {
         let conn = pool.get().map_err(AppError::Pool)?;
         let repo = MemoryRepository::new(&conn);
-        repo.get_all_active().map_err(AppError::Db)
+        repo.get_all_active(scope.as_deref()).map_err(AppError::Db)
     })
     .await
     .map_err(|e| AppError::Llm(format!("task join error: {e}")))??;

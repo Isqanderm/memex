@@ -31,6 +31,8 @@ pub struct RememberParams {
     pub content: String,
     /// Memory source label (default: "explicit").
     pub source: Option<String>,
+    /// Memory scope (default: "default").
+    pub scope: Option<String>,
 }
 
 /// Parameters for the `recall` tool.
@@ -47,6 +49,8 @@ pub struct RecallParams {
 pub struct ObserveParams {
     /// Full conversation history as text.
     pub conversation: String,
+    /// Memory scope (default: "default").
+    pub scope: Option<String>,
 }
 
 /// Parameters for the `memories` tool.
@@ -54,6 +58,8 @@ pub struct ObserveParams {
 pub struct MemoriesParams {
     /// Optional category filter.
     pub category: Option<String>,
+    /// Optional scope filter (default: all scopes).
+    pub scope: Option<String>,
 }
 
 /// Parameters for the `index_text` tool.
@@ -144,10 +150,11 @@ impl MemexMcp {
     ) -> Result<CallToolResult, ErrorData> {
         let memory_svc = self.state.memory_svc.clone();
         let source = p.source.unwrap_or_else(|| "explicit".to_string());
+        let scope = p.scope.unwrap_or_else(|| "default".to_string());
         let r = self
             .with_conn(move |conn| {
                 tokio::runtime::Handle::current()
-                    .block_on(memory_svc.remember(conn, &p.content, &source))
+                    .block_on(memory_svc.remember(conn, &p.content, &source, &scope))
                     .map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
@@ -222,7 +229,7 @@ impl MemexMcp {
         let memories = self
             .with_conn(|conn| {
                 MemoryRepository::new(conn)
-                    .get_all_active()
+                    .get_all_active(None)
                     .map_err(AppError::Db)
             })
             .await
@@ -260,10 +267,11 @@ impl MemexMcp {
         Parameters(p): Parameters<ObserveParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let memory_svc = self.state.memory_svc.clone();
+        let scope = p.scope.unwrap_or_else(|| "default".to_string());
         let r = self
             .with_conn(move |conn| {
                 tokio::runtime::Handle::current()
-                    .block_on(memory_svc.observe(conn, &p.conversation))
+                    .block_on(memory_svc.observe(conn, &p.conversation, &scope))
                     .map_err(|e| AppError::Llm(e.to_string()))
             })
             .await
@@ -279,10 +287,11 @@ impl MemexMcp {
         &self,
         Parameters(p): Parameters<MemoriesParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        let scope = p.scope.clone();
         let all = self
-            .with_conn(|conn| {
+            .with_conn(move |conn| {
                 MemoryRepository::new(conn)
-                    .get_all_active()
+                    .get_all_active(scope.as_deref())
                     .map_err(AppError::Db)
             })
             .await

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use rusqlite::Connection;
 use tracing::{info, warn};
 
-use crate::db::repositories::memories::MemoryRepository;
+use crate::db::repositories::memories::{MemoryRepository, NewMemory};
+use crate::db::repositories::memory_sources::MemorySourceRepository;
 use crate::ingestion::embeddings::EmbeddingClient;
 use crate::search::vectors::VectorStore;
 
@@ -46,7 +47,14 @@ impl MemorySvc {
         conn: &Connection,
         text: &str,
         source: &str,
+        scope: &str,
     ) -> anyhow::Result<RememberResult> {
+        // memory_sources.kind is a closed set; memories.source stays free-form.
+        let kind = match source {
+            "explicit" | "conversation" | "document" => source,
+            _ => "explicit",
+        };
+        let (source_id, _) = MemorySourceRepository::new(conn).get_or_create(kind, text)?;
         let facts = self.extractor.extract_facts(text).await?;
         let facts_extracted = facts.len();
         let mut memories_updated = 0;
@@ -124,16 +132,17 @@ impl MemorySvc {
                 .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string());
 
             // Create the new memory
-            let memory_id = repo.create(
-                &fact.content,
-                text,
+            let memory_id = repo.create(&NewMemory {
+                content: &fact.content,
                 source,
-                forget_after_str.as_deref(),
-                relation.as_deref(),
-                parent_id.as_deref(),
-                fact.category.as_deref(),
-                fact.project.as_deref(),
-            )?;
+                source_id: Some(&source_id),
+                scope,
+                forget_after: forget_after_str.as_deref(),
+                relation: relation.as_deref(),
+                parent_id: parent_id.as_deref(),
+                category: fact.category.as_deref(),
+                project: fact.project.as_deref(),
+            })?;
 
             info!("Created memory {memory_id}: {}", fact.content);
 
@@ -153,9 +162,10 @@ impl MemorySvc {
         &self,
         conn: &Connection,
         conversation: &str,
+        scope: &str,
     ) -> anyhow::Result<RememberResult> {
         let prompt = OBSERVE_PROMPT.replace("{conversation}", conversation);
-        self.remember(conn, &prompt, "conversation").await
+        self.remember(conn, &prompt, "conversation", scope).await
     }
 
     pub async fn forget(
