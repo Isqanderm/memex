@@ -258,18 +258,27 @@ uv run python tests/research/memory_eval.py --base-url http://localhost:8000 --s
 
 It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3`, `hit@k (of matched)` (only queries whose expected fact was extracted), `search precision@3` and `updates detected x/y`, and records its configuration (including `--conflict-sim`/`--retrieval-sim` labels). Unmatched expected facts count as misses in the unconditional `hit@k`. `--self-test` checks the scoring helpers and exits. A run writes its results JSON before cleanup, so a failed cleanup or an aborted run still leaves the measurements (with `error` and `aborted` set). `--search-only` skips `remember` and cleanup and reports no facts precision/recall. Results go to `tests/research/results/<date>T<HHMMSS>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
 
-Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`, measured with reranking (d5bd55a) and exact-token scoring (25be1a8)):
+Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`, `MEMORY_RERANK=true`, per-fact exact-token scoring; code at 6d2bddd + 9331ed5):
 
 | metric | value |
 |---|---|
-| facts precision | 0.57 |
-| facts recall | 0.73 |
-| search hit@1 | 0.40 (12/30) |
-| search hit@3 | 0.50 (15/30) |
-| search hit@1 (of matched) | 0.55 (22 of 30 queries had a matched fact) |
-| search hit@3 (of matched) | 0.68 |
-| search precision@3 | 0.44 |
-| updates detected | 3/4 |
+| facts precision | 0.59 |
+| facts recall | 0.70 |
+| search hit@1 | 0.43 (13/30) |
+| search hit@3 | 0.53 (16/30) |
+| search hit@1 (of matched) | 0.57 (23 of 30 queries had a matched fact) |
+| search hit@3 (of matched) | 0.70 |
+| search precision@3 | 0.48 |
+| updates detected | 4/4 |
+
+A/B: reranking on vs off (same seed). One `--keep` run seeded the scope (the baseline above), then the same 44 facts were queried with `--search-only --seed-results <seed json>` against a server with `MEMORY_RERANK=true` and again with `MEMORY_RERANK=false` (23 queries had a matched fact):
+
+| `MEMORY_RERANK` | hit@1 | hit@3 | hit@3 (of matched) | precision@3 |
+|---|---|---|---|---|
+| true (default) | 0.33 | 0.50 | 0.65 | 0.36 |
+| false | 0.23 | 0.43 | 0.57 | 0.25 |
+
+Reranking is a gain on this set: hit@1 +0.10, hit@3 +0.07, precision@3 +0.11, so it stays on by default. The set is small (30 queries, one extraction seed), so treat differences of a few queries as noise. The in-run baseline numbers are higher than the search-only ones because in a normal run each row's queries see only the facts of the rows processed so far, while `--search-only` queries the full scope with all distractors; compare only like with like.
 
 Comparability: unconditional numbers between runs with different extraction outputs are not like-for-like (different facts get extracted, so different queries have something to find). To compare search configurations (thresholds, ranking changes, models) seed once with `--keep`, then run `--search-only --seed-results <seed results json>` per server configuration; this reuses the memory ids matched in the seed run. Without `--seed-results`, `--search-only` re-matches against the whole scope and is only comparable with other such runs.
 
@@ -289,6 +298,7 @@ Lowering the threshold changes nothing: with `multilingual-e5-small` the cosine 
 Calibrating the thresholds: change one variable at a time, restart the server on a fresh `rust/data`, re-run, and compare with the table above.
 
 - `MEMORY_CONFLICT_SIMILARITY` (when a new fact is compared with existing ones for `updates`/`extends`): if `facts precision` drops or good facts get merged, the threshold is too low; if `updates detected` drops, it is too high.
+- `MEMORY_RERANK` (`true` default): rerank memory search candidates with the cross-encoder. Compare `true` and `false` with the `--seed-results` A/B above.
 - `MEMORY_RETRIEVAL_SIMILARITY` (minimum cosine similarity for search hits): if `hit@3` drops, the threshold may be too high, but see the sweep above: values up to 0.6 made no difference; if unrelated memories show up in results, it is too low.
 
 ---
