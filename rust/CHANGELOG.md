@@ -13,6 +13,7 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 - The database schema moves to v2. The first start migrates rc.4/rc.5 databases automatically; back up `data/memex.db` before upgrading.
 - `POST /api/memory/observe` and the MCP `observe` tool no longer return extracted facts; see Changed.
+- Memory search reranks candidates with the cross-encoder; facts are indexed without the leading 'User' token — delete `data/tantivy/memories` once after upgrading so the keyword index is rebuilt at startup.
 
 ### Added
 

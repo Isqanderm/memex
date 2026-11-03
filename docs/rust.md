@@ -258,19 +258,22 @@ uv run python tests/research/memory_eval.py --base-url http://localhost:8000 --s
 
 It prints `facts precision`, `facts recall`, `search hit@1`, `search hit@3`, `hit@k (of matched)` (only queries whose expected fact was extracted), `search precision@3` and `updates detected x/y`, and records its configuration (including `--conflict-sim`/`--retrieval-sim` labels). Unmatched expected facts count as misses in the unconditional `hit@k`. `--self-test` checks the scoring helpers, and writes `tests/research/results/<date>T<HHMMSS>-<model-label>.json` (git-ignored). A run takes about 10 minutes with a 7B model. The exit code is always 0.
 
-Baseline (2026-11-03, measured with the earlier scoring that split exact tokens on punctuation; to be re-measured, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`):
+Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`, `MEMORY_RETRIEVAL_SIMILARITY=0.60`, measured with reranking (d5bd55a) and exact-token scoring (25be1a8)):
 
 | metric | value |
 |---|---|
-| facts precision | 0.67 |
-| facts recall | 0.84 |
-| search hit@1 | 0.50 (15/30) |
-| search hit@3 | 0.53 (16/30) |
-| updates detected | 4/4 |
+| facts precision | 0.57 |
+| facts recall | 0.73 |
+| search hit@1 | 0.40 (12/30) |
+| search hit@3 | 0.50 (15/30) |
+| search hit@1 (of matched) | 0.55 (22 of 30 queries had a matched fact) |
+| search hit@3 (of matched) | 0.68 |
+| search precision@3 | 0.44 |
+| updates detected | 3/4 |
 
-Of the 30 queries, 25 had a matched fact; 9 of those were not found in the top 3 (mostly paraphrase queries such as "where does the user work now" and cross-language ones) (see the sweep below: the threshold is not the cause, ranking is). gpt-4o-mini was not run (no OpenAI key available).
+Before reranking and with the older scoring (which split exact tokens on punctuation) the same set gave precision 0.67, recall 0.84, hit@1 0.50, hit@3 0.53; those numbers are not comparable with the table above. Extraction numbers vary between runs of a 7B model (a second run earlier gave 0.64 / 0.78 / updates 3/4). A `--search-only` re-run on the same seeded scope gives hit@1 0.27, hit@3 0.40 (of matched 0.36 / 0.55) and is repeatable, but it matches expected facts against the whole scope instead of the facts the row just extracted, so compare `--search-only` runs only with each other (as in the sweep below). gpt-4o-mini was not run (no OpenAI key available).
 
-Retrieval threshold sweep (`--search-only` on the same 44 seeded facts, `MEMORY_CONFLICT_SIMILARITY=0.82`; the matching in this mode is against the whole scope, so the control differs slightly from the table above):
+Retrieval threshold sweep before reranking (history; `--search-only` on 44 seeded facts, `MEMORY_CONFLICT_SIMILARITY=0.82`; the control differs slightly from the old baseline because of whole-scope matching, and the numbers use the older scoring):
 
 | `MEMORY_RETRIEVAL_SIMILARITY` | hit@1 | hit@3 | precision@3 |
 |---|---|---|---|
