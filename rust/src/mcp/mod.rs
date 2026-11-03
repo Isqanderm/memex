@@ -100,22 +100,6 @@ fn internal(e: impl std::fmt::Display) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
 }
 
-/// Turns a document title into a safe single-segment file name (no path separators,
-/// no control characters, no leading dots).
-fn safe_file_stem(title: &str) -> String {
-    let cleaned: String = title
-        .trim()
-        .chars()
-        .map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c })
-        .collect();
-    let cleaned = cleaned.trim_start_matches('.').to_string();
-    if cleaned.is_empty() {
-        "untitled".to_string()
-    } else {
-        cleaned
-    }
-}
-
 // ── Server struct ─────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -353,7 +337,8 @@ impl MemexMcp {
         Parameters(p): Parameters<IndexTextParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let upload_dir = self.state.config.upload_dir.clone();
-        let filename = format!("{}.md", safe_file_stem(&p.title));
+        // `enqueue_upload` sanitizes the name (path separators, length).
+        let filename = format!("{}.md", p.title);
         let resp = self
             .with_conn(move |conn| {
                 enqueue_upload(conn, &upload_dir, &filename, p.content.as_bytes())
@@ -442,17 +427,3 @@ impl MemexMcp {
     instructions = "Memex: persistent personal memory and document search. Call context first in a session, observe last."
 )]
 impl ServerHandler for MemexMcp {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn safe_file_stem_strips_path_components() {
-        assert_eq!(safe_file_stem("../../etc/passwd"), "_.._etc_passwd");
-        assert_eq!(safe_file_stem("notes\\x"), "notes_x");
-        assert_eq!(safe_file_stem("  "), "untitled");
-        assert_eq!(safe_file_stem("..."), "untitled");
-        assert_eq!(safe_file_stem("My notes"), "My notes");
-    }
-}

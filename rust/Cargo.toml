@@ -16,7 +16,7 @@ path = "src/main.rs"
 axum = { version = "0.7", features = ["macros", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["fs", "trace"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "limit"] }
 
 # База данных
 rusqlite = { version = "0.39", features = ["bundled", "load_extension"] }

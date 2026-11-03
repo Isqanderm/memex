@@ -46,7 +46,48 @@ pub fn router() -> Router<AppState> {
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
 }
 
-/// Stores `bytes` as `<upload_dir>/<sha256[..16]>-<filename>` and creates an ingestion job.
+/// Longest stem kept in a stored upload name (chars; also capped at `MAX_STEM_BYTES`).
+const MAX_STEM_CHARS: usize = 100;
+/// Byte cap for the stem so `<16 hex>-<stem>.<ext>` stays well under the 255-byte name limit.
+const MAX_STEM_BYTES: usize = 200;
+
+/// Turns a client-supplied file name into a safe single path segment.
+///
+/// `/`, `\` and control characters become `_`, leading dots are stripped (no `..`, no
+/// hidden files), the stem is cut to 100 chars / 200 bytes, an empty stem becomes
+/// `untitled`. A short alphanumeric extension (`.pdf`, `.md`) is kept as is.
+pub(crate) fn safe_upload_name(filename: &str) -> String {
+    let filename = filename.trim();
+    let (stem, ext) = match filename.rsplit_once('.') {
+        Some((stem, ext))
+            if (1..=10).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphanumeric()) =>
+        {
+            (stem, Some(ext))
+        }
+        _ => (filename, None),
+    };
+
+    let cleaned: String = stem
+        .chars()
+        .map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c })
+        .collect();
+    let mut out = String::new();
+    for c in cleaned.trim_start_matches('.').trim().chars().take(MAX_STEM_CHARS) {
+        if out.len() + c.len_utf8() > MAX_STEM_BYTES {
+            break;
+        }
+        out.push(c);
+    }
+    if out.is_empty() {
+        out.push_str("untitled");
+    }
+    match ext {
+        Some(ext) => format!("{out}.{ext}"),
+        None => out,
+    }
+}
+
+/// Stores `bytes` as `<upload_dir>/<sha256[..16]>-<safe filename>` and creates an ingestion job.
 ///
 /// Short-circuits with `already_indexed` / `already_queued` when the checksum is known.
 /// Shared by the HTTP upload handler and the MCP `index_text` tool.
@@ -86,7 +127,7 @@ pub(crate) fn enqueue_upload(
 
     // Save file to upload directory — prefix with checksum to avoid filename collisions
     std::fs::create_dir_all(upload_dir)?;
-    let unique_name = format!("{}-{}", &checksum[..16], filename);
+    let unique_name = format!("{}-{}", &checksum[..16], safe_upload_name(filename));
     let dest_path: PathBuf = PathBuf::from(upload_dir).join(&unique_name);
     std::fs::write(&dest_path, bytes)?;
 
@@ -350,6 +391,32 @@ async fn update_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn safe_upload_name_neutralizes_paths() {
+        assert_eq!(safe_upload_name("../../etc/passwd"), "_.._etc_passwd");
+        assert_eq!(safe_upload_name("../mcp smoke.md"), "_mcp smoke.md");
+        assert_eq!(safe_upload_name("..\\evil.pdf"), "_evil.pdf");
+        assert_eq!(safe_upload_name("notes\nx.txt"), "notes_x.txt");
+        assert_eq!(safe_upload_name(".hidden"), "untitled.hidden");
+        assert_eq!(safe_upload_name("..."), "untitled");
+        assert_eq!(safe_upload_name("  "), "untitled");
+        assert_eq!(safe_upload_name(".md"), "untitled.md");
+        assert_eq!(safe_upload_name("Report 2026.pdf"), "Report 2026.pdf");
+        assert_eq!(safe_upload_name("archive.tar.gz"), "archive.tar.gz");
+        assert_eq!(safe_upload_name("upload"), "upload");
+    }
+
+    #[test]
+    fn safe_upload_name_truncates_long_stems() {
+        let long = format!("{}.md", "a".repeat(300));
+        assert_eq!(safe_upload_name(&long), format!("{}.md", "a".repeat(100)));
+        // 3-byte chars: the byte cap (200) wins over the char cap (100).
+        let cjk = format!("{}.pdf", "文".repeat(150));
+        let name = safe_upload_name(&cjk);
+        assert_eq!(name, format!("{}.pdf", "文".repeat(66)));
+        assert!(name.len() + 17 <= 255);
+    }
 
     #[test]
     fn upload_response_serializes() {
