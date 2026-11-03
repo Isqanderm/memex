@@ -11,18 +11,26 @@ Versioning: independent from Python version (see root CHANGELOG.md)
 
 ### Upgrading from rc.5
 
-- The database schema moves to v2. The first start migrates rc.4/rc.5 databases automatically; back up `data/memex.db` before upgrading.
-- `POST /api/memory/observe` and the MCP `observe` tool no longer return extracted facts; see Changed.
-- Memory search reranks candidates with the cross-encoder; facts are indexed without the leading 'User' token — the first start after upgrading rebuilds the memory keyword index automatically (versioned by `data/tantivy/memories/INDEX_VERSION`). `MEMORY_RERANK=false` turns the rerank off.
+- Stop the server, then back up `data/memex.db` together with its `memex.db-wal` and `memex.db-shm` files (the database runs in WAL mode, so the `.db` file alone can miss recent writes).
+- The database schema moves to v2. The first start migrates rc.4/rc.5 databases automatically.
+- The memory keyword index is rebuilt automatically on the first start (facts are indexed without the leading 'User' token; versioned by `data/tantivy/memories/INDEX_VERSION`).
+- `POST /api/memory/observe` and the MCP `observe` tool no longer return extracted facts, and `recall` no longer answers with the LLM or searches documents; see Changed.
 
 ### Added
 
-- MCP tool `check_memory_job` and `GET /api/memory/jobs/{job_id}` (`{job_id, status, facts_extracted, error}`)
+- `scope` on `remember`, `observe`, `memories`, `recall` and `POST /api/memory/search`, and `?scope=` on `GET /api/memory/list` and `GET /api/memory/context`. Writes default to `default`; reads without a scope (or with a blank one) cover all scopes.
+- `POST /api/memory/search` — hybrid memory search without an LLM (`{query, scope?, category?, top_k?}` → `{hits: [...]}`, `top_k` clamped to 1..=100, 400 on a blank query)
+- `GET /api/memory/jobs/{job_id}` (`{job_id, status, facts_extracted, error}`) and MCP tool `check_memory_job`
+- MCP tool `search_documents` — vector search over document chunks, no LLM (`query`, `top_k` default 5, at most 50)
+- `MEMORY_CONFLICT_SIMILARITY` (default 0.82) and `MEMORY_RETRIEVAL_SIMILARITY` (default 0.60)
+- `MEMORY_RERANK` (default `true`) — cross-encoder rerank of memory search candidates
+- Profile cache: `context` reuses the last profile until the active memories, the scope or the date change
 
 ### Changed
 
-- `observe` is asynchronous: the conversation is stored and queued in `memory_extraction_jobs`, a background worker extracts the facts. `POST /api/memory/observe` returns `202 Accepted` with `{"job_id", "status": "pending"}`; the MCP tool returns `Queued. job_id: <id>. Check with check_memory_job.` The same conversation sent twice in the same scope maps to the same job; blank conversations are rejected with 400. `remember` stays synchronous.
-- `recall` searches memory facts without calling the LLM
+- `recall` returns memory facts only (hybrid vector + BM25, reranked): no LLM call and no document search. Use `search_documents` for documents and `POST /api/query` for synthesized answers. Scores are cross-encoder logits with `MEMORY_RERANK=true` (can be negative) and RRF scores otherwise.
+- `observe` is asynchronous: the conversation is stored and queued in `memory_extraction_jobs`, a background worker extracts the facts. `POST /api/memory/observe` returns `202 Accepted` with `{"job_id", "status"}` (`pending` for a new job, the current status when the same conversation is already queued in the same scope); the MCP tool returns `Queued. job_id: <id>. Check with check_memory_job.` Blank conversations are rejected with 400. Extraction is at-least-once (a restart mid-job extracts the conversation again). `remember` stays synchronous.
+- `POST /api/search/chunks` returns chunks best score first.
 
 ---
 

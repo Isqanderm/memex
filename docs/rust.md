@@ -142,27 +142,37 @@ All settings via environment variables (or `.env` file in working directory):
 
 ```bash
 # Storage paths
-DATABASE_PATH=data/memex.db      # SQLite database
-TANTIVY_PATH=data/tantivy         # Full-text search index
-UPLOAD_DIR=data/uploads           # Uploaded files
+# SQLite database
+DATABASE_PATH=data/memex.db
+# Full-text search index
+TANTIVY_PATH=data/tantivy
+# Uploaded files
+UPLOAD_DIR=data/uploads
 
 # Embedding model (downloaded automatically on first run)
-LOCAL_EMBEDDING_MODEL=multilingual-e5-small   # 384-dim, EN+RU
+# 384-dim, EN+RU
+LOCAL_EMBEDDING_MODEL=multilingual-e5-small
 EMBEDDING_DIMENSIONS=384
 
 # LLM provider
-LLM_PROVIDER=openai               # or: claude
-LLM_MODEL=qwen2.5:7b              # or: gpt-4o-mini, claude-sonnet-4-6
+# openai or claude
+LLM_PROVIDER=openai
+# or: gpt-4o-mini, claude-sonnet-4-6
+LLM_MODEL=qwen2.5:7b
 LLM_MAX_TOKENS=2048
 LLM_TEMPERATURE=0.1
 
 # API keys (set one based on LLM_PROVIDER)
-# ANTHROPIC_API_KEY=sk-ant-...      # only for LLM_PROVIDER=claude
-# OPENAI_LLM_API_KEY=sk-...         # only for api.openai.com
-LLM_BASE_URL=http://host.docker.internal:11434/v1   # OpenAI-compatible endpoint (Ollama); key optional
+# Only for LLM_PROVIDER=claude:
+# ANTHROPIC_API_KEY=sk-ant-...
+# Only for api.openai.com:
+# OPENAI_LLM_API_KEY=sk-...
+# OpenAI-compatible endpoint (Ollama); the key is optional when it is set
+LLM_BASE_URL=http://host.docker.internal:11434/v1
 
 # Models
-# MODEL_CACHE_DIR=data/models       # Docker image uses /app/models
+# Docker image uses /app/models
+# MODEL_CACHE_DIR=data/models
 # RERANKER_MODEL=jina-reranker-v2-base-multilingual
 
 # MCP (/mcp)
@@ -177,8 +187,11 @@ SEMANTIC_TOP_K=20
 BM25_TOP_K=20
 RRF_K=60
 RERANKER_TOP_N=5
-MEMORY_CONFLICT_SIMILARITY=0.82   # cosine similarity; calibrate with tests/research/memory_eval.py
-MEMORY_RETRIEVAL_SIMILARITY=0.60  # cosine similarity; calibrate with tests/research/memory_eval.py
+# Memory thresholds: cosine similarity; calibrate with tests/research/memory_eval.py
+MEMORY_CONFLICT_SIMILARITY=0.82
+MEMORY_RETRIEVAL_SIMILARITY=0.60
+# Cross-encoder rerank of memory hits (false: keep the RRF order)
+MEMORY_RERANK=true
 L2_CHUNK_SIZE=512
 L1_CHUNK_SIZE=128
 L2_CHUNK_OVERLAP=64
@@ -198,6 +211,8 @@ Request body limit is 16 MiB. Requests carrying a browser `Origin` header are re
 
 ### Available tools
 
+12 tools:
+
 | Tool | Description |
 |---|---|
 | `remember` | Save text as a memory fact (extracted by LLM, synchronous) |
@@ -207,14 +222,19 @@ Request body limit is 16 MiB. Requests carrying a browser `Origin` header are re
 | `observe` | Queue fact extraction from a conversation (async, returns a job id) |
 | `check_memory_job` | Check an `observe` job by job_id: pending/processing/done (facts extracted)/error |
 | `memories` | List stored memories, optionally filtered by category and `scope` |
+| `search_documents` | Search indexed documents (vector chunk search, no LLM): `query`, optional `top_k` (default 5, at most 50); one line per chunk with document title, `doc_id`, chunk id and score |
 | `index_text` | Index text content as a document (async, returns a job id) |
 | `check_indexing` | Check indexing job status by job_id |
 | `list_documents` | List all indexed documents |
 | `delete_document` | Delete an indexed document by ID |
 
-`remember`, `observe`, `recall` and `memories` take an optional `scope`: writes default to `default`, reads without `scope` cover all scopes. Separate projects or agents can keep their facts apart this way. Over HTTP, `GET /api/memory/context?scope=` builds the profile for one scope.
+`remember`, `observe`, `recall` and `memories` take an optional `scope`: writes default to `default`, reads without `scope` cover all scopes. A blank or whitespace-only `scope` counts as not given. Separate projects or agents can keep their facts apart this way. Over HTTP, `GET /api/memory/list?scope=` and `GET /api/memory/context?scope=` take the same filter.
 
-`observe` does not wait for the LLM. It stores the conversation and returns a job id; a background worker extracts the facts. Over HTTP, `POST /api/memory/observe` answers `202 Accepted` with `{"job_id": "...", "status": "pending"}`, and `GET /api/memory/jobs/{job_id}` returns `{job_id, status, facts_extracted, error}`. Sending the same conversation again in the same scope returns the same job instead of extracting it twice (a job that ended in `error` is retried with a new job; another scope gets its own job). A blank conversation is rejected with 400. Jobs interrupted by a restart are queued again when the server starts. `remember` stays synchronous.
+`recall` returns memory facts only: it does not call the LLM and does not search documents. Use `search_documents` for documents and `POST /api/query` for a synthesized answer. Scores in `recall` and `POST /api/memory/search` are raw cross-encoder logits when `MEMORY_RERANK=true` (they can be negative; compare them only within one answer) and RRF scores otherwise.
+
+`observe` does not wait for the LLM. It stores the conversation and returns a job id; a background worker extracts the facts. Over HTTP, `POST /api/memory/observe` answers `202 Accepted` with `{"job_id": "...", "status": "pending"}`, and `GET /api/memory/jobs/{job_id}` returns `{job_id, status, facts_extracted, error}`. Sending the same conversation again in the same scope returns the same job instead of extracting it twice (a job that ended in `error` is retried with a new job; another scope gets its own job). A blank conversation is rejected with 400. When the conversation is already queued, the answer carries that job's current status (`pending`, `processing` or `done`) instead of `pending`. Jobs interrupted by a restart are queued again when the server starts. `remember` stays synchronous.
+
+Extraction is at-least-once: a restart in the middle of a job extracts that conversation again from the start, and in a rolling deploy where the old and new containers overlap, the new one can reset a job the old one is still processing, so it runs twice. Conflict resolution usually merges the duplicate facts, but a few may be stored twice.
 
 ### Deploying inside mcp-registry
 
@@ -305,7 +325,33 @@ Calibrating the thresholds: change one variable at a time, restart the server on
 
 ## API
 
-The Rust version exposes the same REST API as the Python version with identical request/response shapes, except `POST /api/memory/observe`, which is asynchronous here (see [MCP over HTTP](#mcp-over-http)). See [REST API docs](../README.md#rest-api) for usage examples.
+The REST API follows the Python version for documents, `/api/query` and the basic memory endpoints, but it is not identical: `POST /api/memory/observe` is asynchronous (see [MCP over HTTP](#mcp-over-http)), and the Rust version adds `scope` on memory endpoints, `GET /api/memory/jobs/{job_id}` and `POST /api/memory/search`. See [REST API docs](../README.md#rest-api) for the shared endpoints.
+
+### `POST /api/memory/search`
+
+Hybrid memory search (vector + BM25, fused with RRF, then reranked when `MEMORY_RERANK=true`); no LLM call. Every returned fact has its access count incremented.
+
+Request body:
+
+```json
+{"query": "where does the user live", "scope": "work", "category": "personal", "top_k": 10}
+```
+
+`query` is required; a blank query returns 400. `scope` and `category` are optional filters (a blank `scope` means all scopes). `top_k` defaults to 10 and is clamped to 1..=100.
+
+Response:
+
+```json
+{"hits": [{"id": "...", "content": "User lives in Novi Sad", "score": 3.42, "scope": "work",
+           "category": "personal", "project": null, "source": "explicit",
+           "created_at": "2026-11-03 10:00:00", "access_count": 2}]}
+```
+
+`score` is the cross-encoder logit when reranking is on (can be negative) and the RRF score when it is off.
+
+### Known limitations
+
+- Memory search fetches candidates from the whole index and applies the `scope`/`category` filter afterwards. With a filter it fetches at least 200 candidates per side (vector and keyword), so a scope holding a small share of a large memory store can still miss facts that rank below that cut. A filter inside the indexes is planned.
 
 ---
 
