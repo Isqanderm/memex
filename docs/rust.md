@@ -270,10 +270,21 @@ Baseline (2026-11-03, `qwen2.5:7b` via Ollama, `MEMORY_CONFLICT_SIMILARITY=0.82`
 
 Of the 30 queries, 25 had a matched fact; 9 of those were not found in the top 3 (mostly paraphrase queries such as "where does the user work now" and cross-language ones), and hit@1 is almost equal to hit@3, which suggests results are cut off by the retrieval threshold rather than ranked badly. gpt-4o-mini was not run (no OpenAI key available).
 
+Retrieval threshold sweep (`--search-only` on the same 44 seeded facts, `MEMORY_CONFLICT_SIMILARITY=0.82`; the matching in this mode is against the whole scope, so the control differs slightly from the table above):
+
+| `MEMORY_RETRIEVAL_SIMILARITY` | hit@1 | hit@3 | precision@3 |
+|---|---|---|---|
+| 0.20 | 0.33 | 0.47 | 0.28 |
+| 0.40 | 0.33 | 0.47 | 0.28 |
+| 0.60 (control, default) | 0.33 | 0.47 | 0.28 |
+| 0.80 | 0.33 | 0.43 | 0.34 |
+
+Lowering the threshold changes nothing: with `multilingual-e5-small` the cosine similarity between a query and even unrelated short facts is well above 0.6, so the vector filter only starts to cut results around 0.8. The default stays at 0.60. The remaining misses come from ranking (the RRF merge of vector and BM25 hits puts generic "User ..." facts above the relevant one), not from the cut-off, so improving hit@3 needs a ranking change rather than a different threshold. Re-run the sweep with `--search-only` after any ranking change.
+
 Calibrating the thresholds: change one variable at a time, restart the server on a fresh `rust/data`, re-run, and compare with the table above.
 
 - `MEMORY_CONFLICT_SIMILARITY` (when a new fact is compared with existing ones for `updates`/`extends`): if `facts precision` drops or good facts get merged, the threshold is too low; if `updates detected` drops, it is too high.
-- `MEMORY_RETRIEVAL_SIMILARITY` (minimum cosine similarity for search hits): if `hit@3` drops, the threshold is too high (try 0.5); if unrelated memories show up in results, it is too low.
+- `MEMORY_RETRIEVAL_SIMILARITY` (minimum cosine similarity for search hits): if `hit@3` drops, the threshold may be too high, but see the sweep above: values up to 0.6 made no difference; if unrelated memories show up in results, it is too low.
 
 ---
 

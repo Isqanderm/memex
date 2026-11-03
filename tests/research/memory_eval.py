@@ -8,6 +8,7 @@ expected facts by token-F1 >= 0.6, then run the row's search queries.
 Usage:
     uv run python tests/research/memory_eval.py --base-url http://localhost:8000 --scope eval
     uv run python tests/research/memory_eval.py --model-label qwen2.5-7b --keep
+    uv run python tests/research/memory_eval.py --search-only   # threshold sweeps without the LLM
 
 Prints facts precision / recall, search hit@1 / hit@3 and updates detected.
 Always exits 0 (research tool). Results go to results/<date>-<model-label>.json.
@@ -78,7 +79,16 @@ def remember(client: httpx.Client, text: str, scope: str) -> dict:
     return r.json()
 
 
-def run_row(client: httpx.Client, row: dict, scope: str) -> dict:
+def run_row(client: httpx.Client, row: dict, scope: str, search_only: bool = False) -> dict:
+    if search_only:
+        # facts already in the scope (seeded by a previous --keep run): match against all of them
+        matched = match_facts(row["expected_facts"], list_scope(client, scope))
+        return {
+            "id": row["id"], "extracted": [], "n_extracted": 0, "n_matched_extracted": 0,
+            "n_expected": len(row["expected_facts"]), "n_matched_expected": len(matched),
+            "first_facts_extracted": None, "expected_updates": None, "updates": None,
+            "matched_ids": {str(i): m["id"] for i, m in matched.items()},
+        }
     before = {m["id"] for m in list_scope(client, scope)}
     res = remember(client, row["text"], scope)
     updates = None
@@ -104,12 +114,15 @@ def run_queries(client: httpx.Client, row: dict, result: dict, scope: str, top_k
     out = []
     for q in row.get("queries", []):
         mid = result["matched_ids"].get(str(q["expect_fact"]))
-        hits = []
+        hits, p3 = [], None
         if mid:
             r = client.post("/api/memory/search", json={"query": q["q"], "scope": scope, "top_k": top_k})
             r.raise_for_status()
-            hits = [h["id"] for h in r.json()["hits"]]
-        out.append({
+            found = r.json()["hits"][:3]
+            hits = [h["id"] for h in found]
+            if found:
+                p3 = sum(any(token_f1(e, h["content"]) >= F1_THRESHOLD for e in row["expected_facts"]) for h in found) / len(found)
+        out.append({"p3": p3, 
             "row": row["id"], "q": q["q"], "matched": bool(mid),
             "hit1": bool(mid) and hits[:1] == [mid], "hit3": bool(mid) and mid in hits[:3],
         })
@@ -121,12 +134,14 @@ def ratio(a: int, b: int) -> float:
 
 
 def summarize(results: list[dict], queries: list[dict]) -> dict:
+    p3 = [q["p3"] for q in queries if q.get("p3") is not None]
     upd = [r for r in results if r["expected_updates"] is not None]
     return {
         "facts_precision": ratio(sum(r["n_matched_extracted"] for r in results), sum(r["n_extracted"] for r in results)),
         "facts_recall": ratio(sum(r["n_matched_expected"] for r in results), sum(r["n_expected"] for r in results)),
         "hit_at_1": ratio(sum(q["hit1"] for q in queries), len(queries)),
         "hit_at_3": ratio(sum(q["hit3"] for q in queries), len(queries)),
+        "precision_at_3": sum(p3) / len(p3) if p3 else 0.0,
         "updates_detected": sum(1 for r in upd if (r["updates"] or 0) >= r["expected_updates"]),
         "updates_total": len(upd),
         "rows": len(results),
@@ -141,6 +156,7 @@ def print_report(s: dict) -> None:
     print(f"{'facts recall':<22}{s['facts_recall']:>10.2f}")
     print(f"{'search hit@1':<22}{s['hit_at_1']:>10.2f}")
     print(f"{'search hit@3':<22}{s['hit_at_3']:>10.2f}")
+    print(f"{'search precision@3':<22}{s['precision_at_3']:>10.2f}")
     print(f"{'updates detected':<22}{s['updates_detected']:>7}/{s['updates_total']}")
     print(f"({s['rows']} rows, {s['queries']} queries)")
 
@@ -158,6 +174,8 @@ def main() -> None:
     ap.add_argument("--scope", default="eval")
     ap.add_argument("--model-label", default="local", help="used only for the results filename")
     ap.add_argument("--dataset", default=str(DATASET))
+    ap.add_argument("--search-only", action="store_true",
+                    help="skip remember and cleanup; use facts already in the scope (seed with a previous --keep run)")
     ap.add_argument("--keep", action="store_true", help="do not delete the scope's facts at the end")
     args = ap.parse_args()
 
@@ -166,20 +184,22 @@ def main() -> None:
     with httpx.Client(base_url=args.base_url, timeout=300) as client:
         try:
             for row in rows:
-                res = run_row(client, row, args.scope)
+                res = run_row(client, row, args.scope, args.search_only)
                 results.append(res)
                 queries.extend(run_queries(client, row, res, args.scope))
                 print(f"{row['id']}: extracted {res['n_extracted']}, matched {res['n_matched_expected']}/{res['n_expected']}", flush=True)
         except httpx.HTTPError as e:
             print(f"request failed: {e}")
         finally:
-            if not args.keep:
+            if not (args.keep or args.search_only):
                 print(f"cleaned up {cleanup(client, args.scope)} facts in scope {args.scope!r}")
 
     summary = summarize(results, queries)
     print()
     print_report(summary)
     RESULTS_DIR.mkdir(exist_ok=True)
+    if args.search_only:
+        args.model_label += "-search-only"
     label = re.sub(r"[^\w.-]", "-", args.model_label)
     out = RESULTS_DIR / f"{date.today().isoformat()}-{label}.json"
     out.write_text(json.dumps({"summary": summary, "rows": results, "queries": queries}, ensure_ascii=False, indent=2))
