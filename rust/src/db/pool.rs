@@ -52,13 +52,20 @@ fn init_connection(conn: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn build_pool(database_path: &str) -> Result<DbPool, r2d2::Error> {
+pub fn build_pool(database_path: &str) -> anyhow::Result<DbPool> {
     // Register sqlite-vec once before opening any connections.
     register_sqlite_vec();
 
+    // Initialise (WAL + schema) once on a single connection first; the pool then
+    // opens its connections concurrently without contending on the journal mode switch.
+    {
+        let mut first = Connection::open(database_path)?;
+        init_connection(&mut first)?;
+    }
+
     let manager = SqliteConnectionManager::file(database_path)
         .with_init(init_connection);
-    Pool::builder().max_size(16).build(manager)
+    Ok(Pool::builder().max_size(16).build(manager)?)
 }
 
 #[cfg(test)]
